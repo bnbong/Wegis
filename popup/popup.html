@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qshing Defender</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <div class="logo">
+          <img
+            src="../icons/icon48.png"
+            alt="Qshing Defender"
+            class="logo-icon"
+          />
+          <h1>Qshing Defender</h1>
+        </div>
+        <div class="status" id="status">
+          <span class="status-indicator" id="statusIndicator"></span>
+          <span class="status-text" id="statusText">Protected</span>
+        </div>
+      </div>
+
+      <!-- Main Toggle -->
+      <div class="main-toggle">
+        <label class="toggle-switch">
+          <input type="checkbox" id="mainToggle" checked />
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">Real-time Protection</span>
+      </div>
+
+      <!-- Statistics Section -->
+      <div class="stats-section">
+        <h3>Protection Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-number" id="blockedSites">0</div>
+            <div class="stat-label">Blocked Sites</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="checkedUrls">0</div>
+            <div class="stat-label">Checked Links</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Current Page Information -->
+      <div class="current-page">
+        <h3>Current Page</h3>
+        <div class="page-info">
+          <div class="page-url" id="currentUrl">
+            Loading page information...
+          </div>
+          <div class="page-links">
+            <span id="linkCount">0</span> links found
+          </div>
+        </div>
+        <button class="scan-button" id="scanButton">
+          <span class="scan-icon">🔍</span>
+          Scan Again
+        </button>
+      </div>
+
+      <!-- Settings Section -->
+      <div class="settings-section">
+        <h3>Settings</h3>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="blockPhishing" checked />
+            <span class="checkmark"></span>
+            Block Phishing Sites
+          </label>
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="showWarnings" checked />
+            <span class="checkmark"></span>
+            Show Warning Messages
+          </label>
+        </div>
+        <div class="setting-item">
+          <label>
+            <input type="checkbox" id="checkDownloads" checked />
+            <span class="checkmark"></span>
+            Check Download Files
+          </label>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons">
+        <button class="btn btn-secondary" id="optionsButton">
+          <span class="btn-icon">⚙️</span>
+          Advanced Settings
+        </button>
+        <button class="btn btn-secondary" id="helpButton">
+          <span class="btn-icon">❓</span>
+          Help
+        </button>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <div class="version">v1.0.0</div>
+        <div class="powered-by">
+          Powered by
+          <a
+            href="https://github.com/bnbong/Qshing_server"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Qshing API</a
+          >
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Scanning...</div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

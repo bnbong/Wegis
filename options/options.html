@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qshing Defender - Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <div class="logo">
+          <img
+            src="../icons/icon48.png"
+            alt="Qshing Defender"
+            class="logo-icon"
+          />
+          <h1>Qshing Defender</h1>
+          <span class="version">v1.0.0</span>
+        </div>
+        <p class="description">
+          Security extension that ensures safe web browsing by protecting
+          against phishing sites
+        </p>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- General Settings -->
+        <section class="settings-section">
+          <h2>General Settings</h2>
+          <div class="setting-group">
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>Real-time Protection</h3>
+                <p>
+                  Monitor links on web pages in real-time and block phishing
+                  sites.
+                </p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="qshingEnabled" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>Block Phishing Sites</h3>
+                <p>Automatically block access to confirmed phishing sites.</p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="blockPhishing" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>Show Warning Messages</h3>
+                <p>Display visual warnings for dangerous links.</p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="showWarnings" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>Check Download Files</h3>
+                <p>
+                  Provide additional protection for download links such as PDFs
+                  and executable files.
+                </p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="checkDownloads" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Advanced Settings -->
+        <section class="settings-section">
+          <h2>Advanced Settings</h2>
+          <div class="setting-group">
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>QR Code Scanning</h3>
+                <p>
+                  Automatically scan QR codes on web pages to check their links.
+                </p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="scanQRCodes" checked />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>Cache Duration</h3>
+                <p>Set the time to keep scan results in cache.</p>
+              </div>
+              <div class="setting-control">
+                <select id="cacheTime">
+                  <option value="3600">1 hour</option>
+                  <option value="7200">2 hours</option>
+                  <option value="14400">4 hours</option>
+                  <option value="28800">8 hours</option>
+                  <option value="86400">24 hours</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>API Request Interval</h3>
+                <p>Wait time between API requests to reduce server load.</p>
+              </div>
+              <div class="setting-control">
+                <select id="apiDelay">
+                  <option value="500">0.5 seconds</option>
+                  <option value="1000">1 second</option>
+                  <option value="2000">2 seconds</option>
+                  <option value="3000">3 seconds</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Whitelist Management -->
+        <section class="settings-section">
+          <h2>Whitelist Management</h2>
+          <div class="whitelist-section">
+            <p class="section-description">
+              Add trusted domains to exclude them from scanning.
+            </p>
+
+            <div class="whitelist-input">
+              <input
+                type="text"
+                id="whitelistDomain"
+                placeholder="e.g., example.com"
+              />
+              <button id="addWhitelist" class="btn btn-primary">Add</button>
+            </div>
+
+            <div class="whitelist-list" id="whitelistList">
+              <!-- Whitelist items will be dynamically added here -->
+            </div>
+          </div>
+        </section>
+
+        <!-- Statistics and Information -->
+        <section class="settings-section">
+          <h2>Statistics and Information</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-number" id="totalChecked">0</div>
+              <div class="stat-label">Total Links Checked</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number" id="totalBlocked">0</div>
+              <div class="stat-label">Blocked Phishing Sites</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number" id="cacheSize">0</div>
+              <div class="stat-label">Cache Items</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number" id="successRate">0%</div>
+              <div class="stat-label">Scan Success Rate</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Data Management -->
+        <section class="settings-section">
+          <h2>Data Management</h2>
+          <div class="data-management">
+            <div class="action-buttons">
+              <button id="clearCache" class="btn btn-secondary">
+                <span class="btn-icon">🗑️</span>
+                Clear Cache
+              </button>
+              <button id="exportSettings" class="btn btn-secondary">
+                <span class="btn-icon">📤</span>
+                Export Settings
+              </button>
+              <button id="importSettings" class="btn btn-secondary">
+                <span class="btn-icon">📥</span>
+                Import Settings
+              </button>
+              <button id="resetSettings" class="btn btn-danger">
+                <span class="btn-icon">🔄</span>
+                Reset Settings
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Information -->
+        <section class="settings-section">
+          <h2>Information</h2>
+          <div class="info-section">
+            <div class="info-item">
+              <h3>Developer</h3>
+              <p>
+                <a
+                  href="https://github.com/bnbong"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >bnbong</a
+                >
+              </p>
+            </div>
+            <div class="info-item">
+              <h3>API Server</h3>
+              <p>https://api.bnbong.xyz/phishing-detection</p>
+            </div>
+            <div class="info-item">
+              <h3>Support</h3>
+              <p>
+                <a
+                  href="https://github.com/bnbong/Qshing_extension"
+                  target="_blank"
+                  >GitHub</a
+                >
+                |
+                <a href="mailto:bbbong9@gmail.com">Email Support</a>
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Save Status Display -->
+      <div class="save-indicator" id="saveIndicator" style="display: none">
+        <span class="save-icon">✓</span>
+        Settings saved successfully
+      </div>
+    </div>
+
+    <!-- Hidden File Input -->
+    <input type="file" id="fileInput" accept=".json" style="display: none" />
+
+    <script src="options.js"></script>
+  </body>
+</html>

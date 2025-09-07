@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Qshing Defender",
+  "version": "1.0.0",
+  "description": "Browser extension that protects users from phishing attacks",
+
+  "permissions": ["activeTab", "storage", "declarativeNetRequest"],
+
+  "host_permissions": [
+    "<all_urls>",
+    "https://api.bnbong.xyz/phishing-detection/*"
+  ],
+
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "lib/jsqr.min.js",
+        "content/link-collector.js",
+        "content/content-script.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Qshing Defender",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "options_page": "options/options.html",
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

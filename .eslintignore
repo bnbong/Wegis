@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Libraries and minified files
+lib/
+**/*.min.js
+
+# Generated files
+*.generated.js
+
+# Logs
+*.log
