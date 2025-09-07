@@ -147,9 +147,6 @@ npm run lint:all
 
 # Fix all issues (lint + format)
 npm run fix:all
-
-# Run pre-commit hooks manually
-npm run pre-commit
 ```
 
 ## Installation Guide
