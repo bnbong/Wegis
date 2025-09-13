@@ -6,7 +6,7 @@
 
 # Wegis Browser Extension
 
-**A Chrome browser extension that provides real-time protection against phishing sites by analyzing all links on web pages users visit.**
+**Guarding Every Link, Every Time**
 
 [![Release](https://img.shields.io/github/v/release/bnbong/Wegis?display_name=tag)](https://github.com/bnbong/Wegis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/bnbong/Wegis/blob/main/LICENSE)
@@ -16,6 +16,8 @@
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](#)
 
 </div>
+
+_A Chrome browser extension that provides real-time protection against phishing sites by analyzing all links on web pages users visit._
 
 ---
 
