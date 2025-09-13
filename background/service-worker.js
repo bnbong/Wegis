@@ -1,5 +1,5 @@
 /**
- * Qshing Defender Background Service Worker
+ * Wegis Background Service Worker
  * Handles background logic for the extension
  */
 
@@ -19,7 +19,7 @@ class QshingBackgroundService {
    * Initialize service
    */
   init() {
-    console.log('Qshing Defender Background Service started');
+    console.log('Wegis Background Service started');
 
     // Extension installation handler
     chrome.runtime.onInstalled.addListener((details) => {
@@ -47,7 +47,7 @@ class QshingBackgroundService {
    */
   async onInstalled(details) {
     if (details.reason === 'install') {
-      console.log('Qshing Defender has been installed.');
+      console.log('Wegis has been installed.');
 
       // Save default settings
       await chrome.storage.sync.set({
@@ -60,7 +60,7 @@ class QshingBackgroundService {
       // Open welcome page (optional)
       // chrome.tabs.create({ url: 'options/options.html' });
     } else if (details.reason === 'update') {
-      console.log('Qshing Defender has been updated.');
+      console.log('Wegis has been updated.');
     }
   }
 

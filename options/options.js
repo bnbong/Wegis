@@ -1,5 +1,5 @@
 /**
- * Qshing Defender Options Page JavaScript
+ * Wegis Options Page JavaScript
  * Extension settings page logic
  */
 
@@ -16,7 +16,7 @@ class QshingOptions {
    * Initialize
    */
   async init() {
-    console.log('Qshing Defender Options initialized');
+    console.log('Wegis Options initialized');
 
     // Initialize DOM elements
     this.initElements();
@@ -378,7 +378,7 @@ class QshingOptions {
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = `qshing-defender-settings-${
+      a.download = `Wegis-settings-${
         new Date().toISOString().split('T')[0]
       }.json`;
       document.body.appendChild(a);

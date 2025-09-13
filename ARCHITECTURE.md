@@ -1,8 +1,8 @@
-# Qshing Defender - Architecture & Logic Structure
+# Wegis - Architecture & Logic Structure
 
 ## System Overview
 
-Qshing Defender is a Chrome browser extension that provides real-time protection against phishing attacks by analyzing all links on web pages. The extension uses a multi-layered architecture with content scripts, background services, and API integration.
+Wegis is a Chrome browser extension that provides real-time protection against phishing attacks by analyzing all links on web pages. The extension uses a multi-layered architecture with content scripts, background services, and API integration.
 
 ## Core Components
 

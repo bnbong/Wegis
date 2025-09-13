@@ -1,4 +1,4 @@
-# Qshing Defender Browser Extension
+# Wegis Browser Extension
 
 ## Project Overview
 

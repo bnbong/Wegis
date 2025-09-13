@@ -1,4 +1,4 @@
-# Qshing Defender Extension Installation Guide
+# Wegis Extension Installation Guide
 
 ## Requirements
 
@@ -25,7 +25,7 @@
    - Select the root folder of this project.
 
 4. **Verify Installation**
-   - Check that "Qshing Defender" is active in the extension list.
+   - Check that "Wegis" is active in the extension list.
 
 ### 2. Icon File Preparation (Optional)
 
@@ -117,7 +117,7 @@ This extension requires the following permissions:
 
 1. **Enable Extension**
 
-   - Click the Qshing Defender icon in the browser toolbar
+   - Click the Wegis icon in the browser toolbar
 
 2. **Link Inspection**
 

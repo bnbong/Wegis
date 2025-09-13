@@ -1,5 +1,5 @@
 /**
- * Qshing Defender Content Script
+ * Wegis Content Script
  * Collects links from web pages and performs phishing site detection
  */
 
@@ -18,7 +18,7 @@ class QshingDefender {
    * Initialize
    */
   async init() {
-    console.log('Initializing Qshing Defender...');
+    console.log('Initializing Wegis...');
 
     // Load saved settings
     await this.loadSettings();

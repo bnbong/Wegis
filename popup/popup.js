@@ -1,5 +1,5 @@
 /**
- * Qshing Defender Popup JavaScript
+ * Wegis Popup JavaScript
  * Popup interface logic handling
  */
 
@@ -15,7 +15,7 @@ class QshingPopup {
    * Initialize
    */
   async init() {
-    console.log('Qshing Defender Popup initialized');
+    console.log('Wegis Popup initialized');
 
     // DOM element references
     this.initElements();

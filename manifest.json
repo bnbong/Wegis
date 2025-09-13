@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Qshing Defender",
+  "name": "Wegis",
   "version": "1.0.0",
   "description": "Browser extension that protects users from phishing attacks",
 
@@ -29,7 +29,7 @@
 
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Qshing Defender",
+    "default_title": "Wegis",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
