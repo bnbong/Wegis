@@ -69,7 +69,7 @@ This extension requires the following permissions:
 2. **Check file structure**
 
    ```
-   Qshing_extension/
+   Wegis/
    ├── manifest.json
    ├── background/
    │   └── service-worker.js
@@ -138,5 +138,5 @@ This extension requires the following permissions:
 
 If you encounter problems or have questions:
 
-- Contact us through [GitHub Issues](https://github.com/bnbong/Qshing_extension/issues)
+- Contact us through [GitHub Issues](https://github.com/bnbong/Wegis/issues)
 - When reporting bugs, please include browser version and error messages

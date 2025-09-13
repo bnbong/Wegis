@@ -153,7 +153,7 @@ class QshingBackgroundService {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            'User-Agent': 'Qshing-Defender-Extension/1.0.0'
+            'User-Agent': 'Wegis-Extension/1.0.0'
           },
           body: requestBody,
           mode: 'cors',
@@ -434,7 +434,7 @@ class QshingBackgroundService {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
-            'User-Agent': 'Qshing-Defender-Extension/1.0.0'
+            'User-Agent': 'Wegis-Extension/1.0.0'
           },
           body: requestBody,
           mode: 'cors',

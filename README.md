@@ -1,8 +1,23 @@
+<p align="center">
+    <img align="top" width="30%" src="/icons/qshing_extension_icon.jpeg" alt="Wegis"/>
+</p>
+
+<div align="center">
+
 # Wegis Browser Extension
 
-## Project Overview
+**A Chrome browser extension that provides real-time protection against phishing sites by analyzing all links on web pages users visit.**
 
-A Chrome browser extension that provides real-time protection against phishing sites by analyzing all links on web pages users visit.
+[![Release](https://img.shields.io/github/v/release/bnbong/Wegis?display_name=tag)](https://github.com/bnbong/Wegis/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/bnbong/Wegis/blob/main/LICENSE)
+[![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E?logo=javascript&logoColor=black)](#)
+[![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)](#)
+[![CSS3](https://img.shields.io/badge/CSS3-1572B6?logo=css3&logoColor=white)](#)
+[![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](#)
+
+</div>
+
+## Project Overview
 
 ## Key Features
 
@@ -47,7 +62,7 @@ Response:
 ## Project Structure
 
 ```
-Qshing_extension/
+Wegis/
 ├── manifest.json
 ├── background/
 │   └── service-worker.js
@@ -92,8 +107,8 @@ Qshing_extension/
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/bnbong/Qshing_extension.git
-   cd Qshing_extension
+   git clone https://github.com/bnbong/Wegis.git
+   cd Wegis
    ```
 
 2. **Install dependencies**
@@ -120,34 +135,6 @@ Qshing_extension/
 - **Stylelint**: CSS linting
 - **Prettier**: Code formatting
 - **Pre-commit hooks**: Automated checks before commits
-
-#### Available Scripts
-
-```bash
-# Lint JavaScript files
-npm run lint
-
-# Fix JavaScript linting issues
-npm run lint:fix
-
-# Lint CSS files
-npm run lint:css
-
-# Fix CSS linting issues
-npm run lint:css:fix
-
-# Format all files with Prettier
-npm run format
-
-# Check if files are properly formatted
-npm run format:check
-
-# Run all linting tools
-npm run lint:all
-
-# Fix all issues (lint + format)
-npm run fix:all
-```
 
 ## Installation Guide
 
