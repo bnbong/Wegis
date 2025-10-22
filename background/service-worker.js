@@ -12,6 +12,16 @@ class QshingBackgroundService {
       lastUpdate: Date.now()
     };
 
+    // Wegis Server API endpoints
+    this.API_BASE = 'https://api.bnbong.xyz/api/v1/wegis-server';
+    this.ENDPOINTS = {
+      analyzeCheck: `${this.API_BASE}/analyze/check`,
+      analyzeBatch: `${this.API_BASE}/analyze/batch`,
+      analyzeRecent: `${this.API_BASE}/analyze/recent`,
+      health: `${this.API_BASE}/health`,
+      feedback: `${this.API_BASE}/feedback`
+    };
+
     this.init();
   }
 
@@ -141,25 +151,20 @@ class QshingBackgroundService {
 
       // API request with enhanced error handling
       const requestBody = JSON.stringify({ url });
-      console.log(
-        'Sending API request to: https://api.bnbong.xyz/phishing-detection/analyze'
-      );
+      console.log(`Sending API request to: ${this.ENDPOINTS.analyzeCheck}`);
       console.log(`Request body: ${requestBody}`);
 
-      const response = await fetch(
-        'https://api.bnbong.xyz/phishing-detection/analyze',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'User-Agent': 'Wegis-Extension/1.0.0'
-          },
-          body: requestBody,
-          mode: 'cors',
-          credentials: 'omit'
-        }
-      );
+      const response = await fetch(this.ENDPOINTS.analyzeCheck, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': 'Wegis-Extension/1.0.0'
+        },
+        body: requestBody,
+        mode: 'cors',
+        credentials: 'omit'
+      });
 
       console.log(`API response status: ${response.status}`);
       console.log('API response headers:', response.headers);
@@ -214,39 +219,84 @@ class QshingBackgroundService {
    * Check batch URLs
    */
   async checkBatchUrls(urls) {
-    const results = [];
-    const batchSize = 5; // Limit concurrent requests
+    // Try server-side batch endpoint first; fallback to per-URL on failure
+    try {
+      const requestBody = JSON.stringify({ urls });
+      console.log(
+        `Sending batch API request to: ${this.ENDPOINTS.analyzeBatch}`
+      );
+      const response = await fetch(this.ENDPOINTS.analyzeBatch, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': 'Wegis-Extension/1.0.0'
+        },
+        body: requestBody,
+        mode: 'cors',
+        credentials: 'omit'
+      });
 
+      if (response.ok) {
+        const data = await response.json();
+        // Expecting array of { url, result, confidence } or similar
+        if (Array.isArray(data.data)) {
+          const nowTs = Date.now();
+          const normalized = data.data.map((item) => ({
+            url: item.url,
+            result: Boolean(item.result),
+            confidence: Number(item.confidence || 0),
+            timestamp: nowTs,
+            message: data.message
+          }));
+
+          // Update cache and stats
+          for (const r of normalized) {
+            this.cache.set(r.url, r);
+            this.stats.checkedUrls++;
+            if (r.result) {
+              this.stats.blockedSites++;
+              await this.addBlockingRule(r.url);
+            }
+          }
+          this.stats.lastUpdate = Date.now();
+          return normalized;
+        }
+      }
+      console.warn(
+        'Batch endpoint did not return expected data; falling back to per-URL checks.'
+      );
+    } catch (error) {
+      console.warn(
+        'Batch endpoint failed, falling back to per-URL checks:',
+        error
+      );
+    }
+
+    // Fallback: per-URL sequential batching
+    const results = [];
+    const batchSize = 5;
     for (let i = 0; i < urls.length; i += batchSize) {
       const batch = urls.slice(i, i + batchSize);
       const batchPromises = batch.map((url) => this.checkUrl(url));
-
-      try {
-        const batchResults = await Promise.allSettled(batchPromises);
-
-        batchResults.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            results.push(result.value);
-          } else {
-            results.push({
-              url: batch[index],
-              result: false,
-              confidence: 0,
-              timestamp: Date.now(),
-              error: result.reason.message
-            });
-          }
-        });
-
-        // Delay for API rate limiting
-        if (i + batchSize < urls.length) {
-          await this.delay(1000);
+      const batchResults = await Promise.allSettled(batchPromises);
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+        } else {
+          results.push({
+            url: batch[index],
+            result: false,
+            confidence: 0,
+            timestamp: Date.now(),
+            error: result.reason?.message || 'Batch fallback error'
+          });
         }
-      } catch (error) {
-        console.error('Error in batch URL checking:', error);
+      });
+      if (i + batchSize < urls.length) {
+        await this.delay(500);
       }
     }
-
     return results;
   }
 
@@ -422,25 +472,16 @@ class QshingBackgroundService {
     try {
       console.log('Testing API connection...');
 
-      const testUrl = 'https://example.com';
-      const requestBody = JSON.stringify({ url: testUrl });
-
-      console.log(`Test request body: ${requestBody}`);
-
-      const response = await fetch(
-        'https://api.bnbong.xyz/phishing-detection/analyze',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'User-Agent': 'Wegis-Extension/1.0.0'
-          },
-          body: requestBody,
-          mode: 'cors',
-          credentials: 'omit'
-        }
-      );
+      // Use health endpoint for connectivity check
+      const response = await fetch(this.ENDPOINTS.health, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'Wegis-Extension/1.0.0'
+        },
+        mode: 'cors',
+        credentials: 'omit'
+      });
 
       console.log(`Test API response status: ${response.status}`);
 

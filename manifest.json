@@ -8,7 +8,7 @@
 
   "host_permissions": [
     "<all_urls>",
-    "https://api.bnbong.xyz/phishing-detection/*"
+    "https://api.bnbong.xyz/api/v1/wegis-server/*"
   ],
 
   "background": {

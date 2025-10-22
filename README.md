@@ -15,10 +15,6 @@
 [![CSS3](https://img.shields.io/badge/CSS3-1572B6?logo=css3&logoColor=white)](#)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue)](#)
 
-</div>
-
-_A Chrome browser extension that provides real-time protection against phishing sites by analyzing all links on web pages users visit._
-
 ---
 
 ## Project Overview
@@ -26,7 +22,7 @@ _A Chrome browser extension that provides real-time protection against phishing 
 ## Key Features
 
 - Automatic collection and analysis of all links on web pages
-- Real-time phishing site verification through Qshing Detection Server API
+- Real-time phishing site verification through Wegis Server API
 - Blocking dangerous link access with warning notifications
 - Special protection for file download links (PDF, etc.)
 - Real-time link monitoring and pre-loading prevention
@@ -35,33 +31,27 @@ _A Chrome browser extension that provides real-time protection against phishing 
 
 - **Manifest Version**: 3
 - **Languages**: JavaScript (ES2022), HTML5, CSS3
-- **API**: [Qshing Detection API](https://github.com/bnbong/Qshing_server)
+- **API**: Wegis Server API
 - **Permissions**: activeTab, declarativeNetRequest, storage, host permissions
 - **External Libraries**: jsQR (QR code decoding)
 
 ## API Specification
 
-### Qshing Detection Server API
+### Wegis Server API
+
+Base URL:
 
 ```
-POST https://api.bnbong.xyz/phishing-detection/analyze
-Content-Type: application/json
-
-Request:
-{
-  "url": "string"
-}
-
-Response:
-{
-  "timestamp": "string",
-  "message": "string",
-  "data": {
-    "result": true,  // Whether it's a phishing site
-    "confidence": 0.0  // Phishing site probability (0.0 ~ 1.0)
-  }
-}
+https://api.bnbong.xyz/api/v1/wegis-server/
 ```
+
+Endpoints:
+
+- POST `/analyze/check` — Single URL phishing analysis
+- POST `/analyze/batch` — Multiple URL batch analysis (for browser extensions)
+- GET `/analyze/recent` — Recent analysis results
+- GET `/health` — Server status check
+- POST `/feedback/*` — User feedback management
 
 ## Project Structure
 

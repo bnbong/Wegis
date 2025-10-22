@@ -139,10 +139,15 @@ User clicks link → Event intercepted → Safety check → Allow/Block decision
 
 ## API Integration Strategy
 
-### Qshing Detection API
+### Wegis Server API
 
 ```
-Endpoint: POST https://api.bnbong.xyz/phishing-detection/analyze
+Base: https://api.bnbong.xyz/api/v1/wegis-server/
+Analyze (single): POST /analyze/check
+Analyze (batch):  POST /analyze/batch
+Recent:           GET  /analyze/recent
+Health:           GET  /health
+Feedback:         POST /feedback/*
 Rate Limiting: Built-in delay and batch processing
 Fallback: Local cache and manual overrides
 ```

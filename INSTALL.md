@@ -40,13 +40,19 @@ The current project includes placeholder icons. To use actual icons:
 
 ### API Server Settings
 
-The extension uses the following API endpoint by default:
+The extension uses the Wegis Server API by default. Base URL:
 
 ```
-https://api.bnbong.xyz/phishing-detection/analyze
+https://api.bnbong.xyz/api/v1/wegis-server/
 ```
 
-To use a different server, modify the API endpoint in `background/service-worker.js`.
+Key endpoints used by the extension:
+
+- `POST /analyze/check` — Single URL analysis
+- `POST /analyze/batch` — Batch analysis for multiple URLs
+- `GET /health` — Connectivity check
+
+To use a different server, modify the base URL and endpoints in `background/service-worker.js`.
 
 ### Permission Settings
 

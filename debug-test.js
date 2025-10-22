@@ -2,7 +2,7 @@
 // Copy and paste this in the browser console on the extension's background page
 
 async function testAPIConnection() {
-  console.log('=== Qshing API Connection Test ===');
+  console.log('=== Wegis API Connection Test ===');
 
   try {
     // Test 1: Basic API connection
@@ -12,12 +12,12 @@ async function testAPIConnection() {
     const requestBody = JSON.stringify({ url: testUrl });
 
     console.log(
-      'Request URL: https://api.bnbong.xyz/phishing-detection/analyze'
+      'Request URL: https://api.bnbong.xyz/api/v1/wegis-server/analyze/check'
     );
     console.log(`Request Body: ${requestBody}`);
 
     const response = await fetch(
-      'https://api.bnbong.xyz/phishing-detection/analyze',
+      'https://api.bnbong.xyz/api/v1/wegis-server/analyze/check',
       {
         method: 'POST',
         headers: {
