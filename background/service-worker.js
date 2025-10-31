@@ -11,6 +11,9 @@ class QshingBackgroundService {
       checkedUrls: 0,
       lastUpdate: Date.now()
     };
+    this.extensionVersion = chrome.runtime.getManifest
+      ? chrome.runtime.getManifest().version
+      : 'unknown';
 
     // Wegis Server API endpoints
     this.API_BASE = 'https://api.bnbong.xyz/api/v1/wegis-server';
@@ -134,6 +137,12 @@ class QshingBackgroundService {
           await this.removeBlockingRule(request.url);
           sendResponse({ success: true });
           break;
+
+        case 'SUBMIT_FEEDBACK': {
+          const feedbackResult = await this.submitFeedback(request.payload);
+          sendResponse(feedbackResult);
+          break;
+        }
 
         default:
           sendResponse({ error: 'Unknown action' });
@@ -551,6 +560,77 @@ class QshingBackgroundService {
       await chrome.storage.local.set({ qshingStats: this.stats });
     } catch (error) {
       console.error('Failed to save stats to storage:', error);
+    }
+  }
+
+  /**
+   * Submit user feedback to Wegis server
+   */
+  async submitFeedback(feedbackPayload = {}) {
+    try {
+      const {
+        url,
+        is_correct: isCorrect,
+        comment,
+        detected_result: detectedResult,
+        confidence,
+        metadata: metadataInput
+      } = feedbackPayload;
+
+      if (!url) {
+        throw new Error('Feedback URL is required.');
+      }
+
+      const normalizedConfidence = Number(confidence);
+      const metadata = {
+        ...(metadataInput && typeof metadataInput === 'object'
+          ? metadataInput
+          : {}),
+        extensionVersion: this.extensionVersion,
+        platform:
+          typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+        submittedAt: new Date().toISOString()
+      };
+
+      const payload = {
+        url,
+        is_correct: Boolean(isCorrect),
+        comment: comment || '',
+        detected_result: Boolean(detectedResult),
+        confidence: Number.isFinite(normalizedConfidence)
+          ? Math.min(Math.max(normalizedConfidence, 0), 1)
+          : 0,
+        metadata
+      };
+
+      const response = await fetch(`${this.ENDPOINTS.feedback}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': 'Wegis-Extension/1.0.0'
+        },
+        body: JSON.stringify(payload),
+        mode: 'cors',
+        credentials: 'omit'
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Feedback request failed: ${response.status} ${response.statusText} - ${errorText}`
+        );
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        message: data.message || 'Feedback submitted successfully.',
+        data
+      };
+    } catch (error) {
+      console.error('Failed to submit feedback:', error);
+      return { error: error.message };
     }
   }
 

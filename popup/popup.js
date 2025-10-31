@@ -62,7 +62,24 @@ class QshingPopup {
       helpButton: document.getElementById('helpButton'),
 
       // Loading
-      loadingOverlay: document.getElementById('loadingOverlay')
+      loadingOverlay: document.getElementById('loadingOverlay'),
+
+      // Feedback
+      feedbackButton: document.getElementById('feedbackButton'),
+      feedbackOverlay: document.getElementById('feedbackOverlay'),
+      feedbackForm: document.getElementById('feedbackForm'),
+      feedbackUrl: document.getElementById('feedbackUrl'),
+      feedbackDetectedResult: document.getElementById('feedbackDetectedResult'),
+      feedbackIsCorrect: document.getElementById('feedbackIsCorrect'),
+      feedbackConfidence: document.getElementById('feedbackConfidence'),
+      feedbackConfidenceValue: document.getElementById(
+        'feedbackConfidenceValue'
+      ),
+      feedbackComment: document.getElementById('feedbackComment'),
+      feedbackStatus: document.getElementById('feedbackStatus'),
+      feedbackSubmitButton: document.getElementById('feedbackSubmitButton'),
+      feedbackCancelButton: document.getElementById('feedbackCancelButton'),
+      feedbackCloseButton: document.getElementById('feedbackCloseButton')
     };
   }
 
@@ -104,6 +121,40 @@ class QshingPopup {
         url: 'https://github.com/bnbong/Qshing_extension/wiki'
       });
     });
+
+    if (this.elements.feedbackButton) {
+      this.elements.feedbackButton.addEventListener('click', () => {
+        this.toggleFeedbackModal(true);
+      });
+    }
+
+    if (this.elements.feedbackCancelButton) {
+      this.elements.feedbackCancelButton.addEventListener('click', () => {
+        this.toggleFeedbackModal(false);
+      });
+    }
+
+    if (this.elements.feedbackCloseButton) {
+      this.elements.feedbackCloseButton.addEventListener('click', () => {
+        this.toggleFeedbackModal(false);
+      });
+    }
+
+    if (this.elements.feedbackForm) {
+      this.elements.feedbackForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        this.submitFeedbackForm();
+      });
+    }
+
+    if (this.elements.feedbackConfidence) {
+      this.elements.feedbackConfidence.addEventListener('input', (event) => {
+        this.updateFeedbackConfidenceDisplay(event.target.value);
+      });
+      this.updateFeedbackConfidenceDisplay(
+        this.elements.feedbackConfidence.value
+      );
+    }
 
     // Listen for background updates
     chrome.runtime.onMessage.addListener((request) => {
@@ -304,6 +355,276 @@ class QshingPopup {
   }
 
   /**
+   * Toggle feedback modal visibility
+   */
+  toggleFeedbackModal(show) {
+    const overlay = this.elements.feedbackOverlay;
+    if (!overlay) {
+      return;
+    }
+
+    if (show) {
+      this.resetFeedbackForm();
+      overlay.style.display = 'flex';
+      overlay.setAttribute('aria-hidden', 'false');
+
+      if (this.currentTab && this.currentTab.url) {
+        this.elements.feedbackUrl.value = this.currentTab.url;
+      }
+
+      setTimeout(() => {
+        this.elements.feedbackComment?.focus();
+      }, 50);
+    } else {
+      overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
+      if (this.elements.feedbackSubmitButton) {
+        this.elements.feedbackSubmitButton.disabled = false;
+        this.elements.feedbackSubmitButton.innerHTML =
+          '<span class="btn-icon">📨</span>Submit Feedback';
+      }
+      this.resetFeedbackForm();
+    }
+  }
+
+  /**
+   * Reset feedback form fields
+   */
+  resetFeedbackForm() {
+    if (!this.elements.feedbackForm) {
+      return;
+    }
+
+    this.elements.feedbackForm.reset();
+    if (this.elements.feedbackIsCorrect) {
+      this.elements.feedbackIsCorrect.checked = true;
+    }
+    if (this.elements.feedbackDetectedResult) {
+      this.elements.feedbackDetectedResult.value = 'true';
+    }
+    if (this.elements.feedbackConfidence) {
+      this.elements.feedbackConfidence.value = '0';
+      this.updateFeedbackConfidenceDisplay('0');
+    }
+    if (this.elements.feedbackStatus) {
+      this.elements.feedbackStatus.textContent = '';
+      this.elements.feedbackStatus.className = 'feedback-status';
+    }
+  }
+
+  /**
+   * Update confidence display text
+   */
+  updateFeedbackConfidenceDisplay(value) {
+    if (!this.elements.feedbackConfidenceValue) {
+      return;
+    }
+
+    const numeric = Number(value);
+    const clamped = Number.isFinite(numeric)
+      ? Math.min(Math.max(numeric, 0), 100)
+      : 0;
+    this.elements.feedbackConfidenceValue.textContent = `${clamped}%`;
+  }
+
+  /**
+   * Submit feedback form
+   */
+  async submitFeedbackForm() {
+    if (
+      !this.elements.feedbackUrl ||
+      !this.elements.feedbackComment ||
+      !this.elements.feedbackSubmitButton ||
+      !this.elements.feedbackStatus
+    ) {
+      return;
+    }
+
+    const url = this.elements.feedbackUrl.value.trim();
+    let comment = this.elements.feedbackComment.value.trim();
+
+    if (!url) {
+      this.elements.feedbackStatus.textContent = 'URL is required.';
+      this.elements.feedbackStatus.className = 'feedback-status error';
+      return;
+    }
+
+    if (!comment) {
+      this.elements.feedbackStatus.textContent = 'Comment is required.';
+      this.elements.feedbackStatus.className = 'feedback-status error';
+      return;
+    }
+
+    const detectedResult =
+      this.elements.feedbackDetectedResult?.value === 'true';
+    const isCorrect = this.elements.feedbackIsCorrect?.checked ?? true;
+    const confidencePercent =
+      Number(this.elements.feedbackConfidence?.value) || 0;
+    const confidence = Math.min(Math.max(confidencePercent, 0), 100) / 100;
+
+    const originalComment = comment;
+
+    this.elements.feedbackSubmitButton.disabled = true;
+    this.elements.feedbackSubmitButton.innerHTML =
+      '<span class="btn-icon">⏳</span>Submitting...';
+    this.elements.feedbackStatus.textContent =
+      'Proofreading your comment locally...';
+    this.elements.feedbackStatus.className = 'feedback-status info';
+
+    const proofreadResult = await this.proofreadComment(comment);
+    comment = proofreadResult.corrected;
+
+    if (proofreadResult.changed) {
+      this.elements.feedbackComment.value = comment;
+      this.elements.feedbackStatus.textContent =
+        'Comment corrected. Submitting feedback...';
+    } else {
+      this.elements.feedbackStatus.textContent =
+        'No corrections needed. Submitting feedback...';
+    }
+
+    const metadata = {
+      source: 'popup',
+      locale: navigator.language || 'en',
+      proofreadApplied: proofreadResult.changed
+    };
+
+    if (proofreadResult.changed) {
+      metadata.originalComment = originalComment;
+    }
+
+    const manifest = chrome.runtime.getManifest?.();
+    if (manifest && manifest.version) {
+      metadata.extensionVersion = manifest.version;
+    }
+
+    try {
+      const response = await this.sendRuntimeMessage({
+        action: 'SUBMIT_FEEDBACK',
+        payload: {
+          url,
+          is_correct: isCorrect,
+          comment,
+          detected_result: detectedResult,
+          confidence,
+          metadata
+        }
+      });
+
+      if (response && !response.error) {
+        this.elements.feedbackStatus.textContent =
+          response.message || 'Feedback submitted. Thank you!';
+        this.elements.feedbackStatus.className = 'feedback-status success';
+        setTimeout(() => {
+          this.toggleFeedbackModal(false);
+        }, 1500);
+      } else {
+        this.elements.feedbackStatus.textContent =
+          (response && response.error) || 'Failed to submit feedback.';
+        this.elements.feedbackStatus.className = 'feedback-status error';
+      }
+    } catch (error) {
+      this.elements.feedbackStatus.textContent =
+        error.message || 'Failed to submit feedback.';
+      this.elements.feedbackStatus.className = 'feedback-status error';
+    } finally {
+      this.elements.feedbackSubmitButton.disabled = false;
+      this.elements.feedbackSubmitButton.innerHTML =
+        '<span class="btn-icon">📨</span>Submit Feedback';
+    }
+  }
+
+  /**
+   * Proofread comment using Chrome built-in Proofreader API
+   */
+  async proofreadComment(text) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { corrected: '', changed: false };
+    }
+
+    const aiNamespace =
+      (window.ai && window.ai.languageModel) ||
+      (window.chrome && window.chrome.ai && window.chrome.ai.languageModel);
+
+    if (!aiNamespace || typeof aiNamespace.create !== 'function') {
+      return { corrected: trimmed, changed: false };
+    }
+
+    try {
+      const session = await aiNamespace.create({ task: 'proofreader' });
+
+      let correctedText = trimmed;
+
+      if (session && typeof session.proofread === 'function') {
+        const result = await session.proofread({ text: trimmed });
+        if (typeof result === 'string') {
+          correctedText = result;
+        } else if (result && typeof result === 'object') {
+          if (typeof result.text === 'string' && result.text.trim()) {
+            correctedText = result.text;
+          } else if (
+            typeof result.correctedText === 'string' &&
+            result.correctedText.trim()
+          ) {
+            correctedText = result.correctedText;
+          } else if (Array.isArray(result.corrections)) {
+            const lastCorrection = result.corrections
+              .map((item) => {
+                if (typeof item === 'string') {
+                  return item;
+                }
+                if (item && typeof item.text === 'string') {
+                  return item.text;
+                }
+                return null;
+              })
+              .filter(Boolean)
+              .pop();
+            if (lastCorrection) {
+              correctedText = lastCorrection;
+            }
+          }
+        }
+      } else if (session && typeof session.generate === 'function') {
+        const prompt =
+          'You are a grammar correction tool. Return only the corrected version of the following text.\n\n' +
+          trimmed;
+        const generateResult = await session.generate({ prompt });
+        if (generateResult && typeof generateResult.output === 'string') {
+          correctedText = generateResult.output.trim();
+        }
+      }
+
+      if (typeof session?.destroy === 'function') {
+        session.destroy();
+      }
+
+      correctedText = correctedText || trimmed;
+      const changed = correctedText.trim() !== trimmed;
+      return { corrected: correctedText, changed };
+    } catch (error) {
+      console.warn('Proofreader API unavailable:', error);
+      return { corrected: trimmed, changed: false };
+    }
+  }
+
+  /**
+   * Helper: promisified runtime message
+   */
+  async sendRuntimeMessage(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(response);
+      });
+    });
+  }
+
+  /**
    * Update UI
    */
   updateUI() {
@@ -348,7 +669,7 @@ class QshingPopup {
       }
 
       return domain;
-    } catch (_error) {
+    } catch {
       return url.length > 30 ? url.substring(0, 27) + '...' : url;
     }
   }

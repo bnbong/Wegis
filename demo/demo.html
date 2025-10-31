@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Wegis Demo Page</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 40px auto;
+        max-width: 720px;
+        line-height: 1.6;
+        color: #222;
+      }
+
+      h1,
+      h2 {
+        color: #0d47a1;
+      }
+
+      p {
+        margin-bottom: 1.2em;
+      }
+
+      section {
+        margin-bottom: 2em;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        background-color: #fafafa;
+      }
+
+      ul {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      li {
+        margin-bottom: 12px;
+      }
+
+      .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        margin-right: 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+      }
+
+      .tag-spam {
+        background-color: #ff5252;
+        color: #fff;
+      }
+
+      .tag-ham {
+        background-color: #43a047;
+        color: #fff;
+      }
+
+      a.demo-link {
+        color: #1565c0;
+        text-decoration: none;
+        word-break: break-all;
+      }
+
+      a.demo-link:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Wegis Demo Page</h1>
+    <p>
+      Wegis browser extension demo page. <br />
+      The links below are labeled to indicate whether they are legitimate (<span
+        class="tag tag-ham"
+        >ham</span
+      >) or suspected phishing (<span class="tag tag-spam">spam</span>).
+    </p>
+
+    <section>
+      <h2>Phishing Samples</h2>
+      <ul>
+        <li>
+          <span class="tag tag-spam">spam</span>
+          <a
+            class="demo-link"
+            href="https://testsafebrowsing.appspot.com/s/phishing.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >testsafebrowsing.appspot.com/s/phishing.html</a
+          >
+        </li>
+        <li>
+          <span class="tag tag-spam">spam</span>
+          <a
+            class="demo-link"
+            href="https://testsafebrowsing.appspot.com/s/phishing-two.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >testsafebrowsing.appspot.com/s/phishing-two.html</a
+          >
+        </li>
+        <li>
+          <span class="tag tag-spam">spam</span>
+          <a
+            class="demo-link"
+            href="https://testsafebrowsing.appspot.com/s/malware.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >testsafebrowsing.appspot.com/s/malware.html</a
+          >
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Legitimate Samples</h2>
+      <ul>
+        <li>
+          <span class="tag tag-ham">ham</span>
+          <a
+            class="demo-link"
+            href="https://www.google.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >www.google.com</a
+          >
+        </li>
+        <li>
+          <span class="tag tag-ham">ham</span>
+          <a
+            class="demo-link"
+            href="https://www.wikipedia.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >www.wikipedia.org</a
+          >
+        </li>
+        <li>
+          <span class="tag tag-ham">ham</span>
+          <a
+            class="demo-link"
+            href="https://github.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >github.com</a
+          >
+        </li>
+      </ul>
+    </section>
+  </body>
+</html>

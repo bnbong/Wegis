@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wegis",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Browser extension that protects users from phishing attacks",
 
   "permissions": ["activeTab", "storage", "declarativeNetRequest"],

@@ -460,6 +460,8 @@ class QshingDefender {
    * Allow navigation after user confirmation
    */
   allowNavigationToUrl(url) {
+    this.blockedUrls.delete(url);
+    this.phishingDetails.delete(url);
     chrome.runtime.sendMessage(
       {
         action: 'ALLOW_PHISHING_URL',
