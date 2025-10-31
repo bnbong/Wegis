@@ -104,6 +104,15 @@ class QshingPopup {
         url: 'https://github.com/bnbong/Qshing_extension/wiki'
       });
     });
+
+    // Listen for background updates
+    chrome.runtime.onMessage.addListener((request) => {
+      if (request && request.action === 'STATS_UPDATED') {
+        const stats = request.stats || {};
+        this.elements.blockedSites.textContent = stats.blockedSites || 0;
+        this.elements.checkedUrls.textContent = stats.checkedUrls || 0;
+      }
+    });
   }
 
   /**
@@ -339,7 +348,7 @@ class QshingPopup {
       }
 
       return domain;
-    } catch (error) {
+    } catch (_error) {
       return url.length > 30 ? url.substring(0, 27) + '...' : url;
     }
   }

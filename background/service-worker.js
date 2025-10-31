@@ -31,6 +31,9 @@ class QshingBackgroundService {
   init() {
     console.log('Wegis Background Service started');
 
+    // Restore cached statistics
+    this.restoreStatsFromStorage();
+
     // Extension installation handler
     chrome.runtime.onInstalled.addListener((details) => {
       this.onInstalled(details);
@@ -127,6 +130,11 @@ class QshingBackgroundService {
           break;
         }
 
+        case 'ALLOW_PHISHING_URL':
+          await this.removeBlockingRule(request.url);
+          sendResponse({ success: true });
+          break;
+
         default:
           sendResponse({ error: 'Unknown action' });
       }
@@ -198,6 +206,8 @@ class QshingBackgroundService {
         await this.addBlockingRule(url);
       }
       this.stats.lastUpdate = Date.now();
+      await this.saveStatsToStorage();
+      this.notifyStatsUpdated();
 
       return result;
     } catch (error) {
@@ -221,7 +231,7 @@ class QshingBackgroundService {
   async checkBatchUrls(urls) {
     // Try server-side batch endpoint first; fallback to per-URL on failure
     try {
-      const requestBody = JSON.stringify({ urls });
+      const requestBody = JSON.stringify(urls);
       console.log(
         `Sending batch API request to: ${this.ENDPOINTS.analyzeBatch}`
       );
@@ -260,6 +270,8 @@ class QshingBackgroundService {
             }
           }
           this.stats.lastUpdate = Date.now();
+          await this.saveStatsToStorage();
+          this.notifyStatsUpdated();
           return normalized;
         }
       }
@@ -510,6 +522,57 @@ class QshingBackgroundService {
         error: error.message,
         type: error.name
       };
+    }
+  }
+
+  /**
+   * Restore statistics from storage
+   */
+  async restoreStatsFromStorage() {
+    try {
+      const { qshingStats } = await chrome.storage.local.get(['qshingStats']);
+      if (qshingStats && typeof qshingStats === 'object') {
+        this.stats = {
+          ...this.stats,
+          ...qshingStats
+        };
+        console.log('Restored stats from storage:', this.stats);
+      }
+    } catch (error) {
+      console.error('Failed to restore stats from storage:', error);
+    }
+  }
+
+  /**
+   * Persist statistics to storage
+   */
+  async saveStatsToStorage() {
+    try {
+      await chrome.storage.local.set({ qshingStats: this.stats });
+    } catch (error) {
+      console.error('Failed to save stats to storage:', error);
+    }
+  }
+
+  /**
+   * Notify other extension contexts that stats were updated
+   */
+  notifyStatsUpdated() {
+    try {
+      chrome.runtime.sendMessage(
+        {
+          action: 'STATS_UPDATED',
+          stats: this.stats
+        },
+        () => {
+          // Ignore errors when no listeners are available
+          if (chrome.runtime.lastError) {
+            return;
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Failed to notify stats update:', error);
     }
   }
 

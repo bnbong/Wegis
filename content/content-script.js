@@ -8,6 +8,7 @@ class QshingDefender {
     this.linkCollector = new LinkCollector();
     this.checkedUrls = new Map(); // URL -> {result, confidence, timestamp}
     this.blockedUrls = new Set();
+    this.phishingDetails = new Map();
     this.isEnabled = true;
     this.warningOverlay = null;
 
@@ -180,6 +181,7 @@ class QshingDefender {
       // Handle phishing sites
       if (result.result) {
         this.blockedUrls.add(url);
+        this.phishingDetails.set(url, result);
         this.markPhishingLink(url, result.confidence);
         console.warn(
           `Phishing site detected: ${url} (Confidence: ${(
@@ -258,26 +260,54 @@ class QshingDefender {
    * Setup link blocking
    */
   setupLinkBlocking() {
+    const handleClick = (event) => {
+      const target = event.target.closest('a');
+      if (!target) {
+        return;
+      }
+
+      const href = target.getAttribute('href');
+      if (!href) {
+        return;
+      }
+
+      const normalizedUrl = this.linkCollector.normalizeURL(href);
+      if (!normalizedUrl) {
+        return;
+      }
+
+      if (this.blockedUrls.has(normalizedUrl)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.showBlockingWarning(normalizedUrl, target);
+      }
+    };
+
+    document.addEventListener('click', handleClick, true);
+    document.addEventListener('auxclick', handleClick, true);
+
     document.addEventListener(
-      'click',
+      'keydown',
       (event) => {
-        const target = event.target.closest('a');
-        if (!target) {
+        if (event.key !== 'Enter') {
           return;
         }
 
-        const href = target.getAttribute('href');
+        const activeElement = document.activeElement;
+        if (!activeElement || activeElement.tagName !== 'A') {
+          return;
+        }
+
+        const href = activeElement.getAttribute('href');
         if (!href) {
           return;
         }
 
         const normalizedUrl = this.linkCollector.normalizeURL(href);
-
         if (this.blockedUrls.has(normalizedUrl)) {
           event.preventDefault();
-          event.stopPropagation();
-          this.showBlockingWarning(normalizedUrl, target);
-          return false;
+          event.stopImmediatePropagation();
+          this.showBlockingWarning(normalizedUrl, activeElement);
         }
       },
       true
@@ -313,8 +343,9 @@ class QshingDefender {
    * Show blocking warning
    */
   showBlockingWarning(url, _linkElement) {
-    const result = this.checkedUrls.get(url);
+    const result = this.phishingDetails.get(url) || this.checkedUrls.get(url);
     const confidence = result ? result.confidence : 0;
+    const message = result && result.message ? result.message : '';
 
     const modal = document.createElement('div');
     modal.style.cssText = `
@@ -334,6 +365,11 @@ class QshingDefender {
       <div style="background: white; padding: 30px; border-radius: 10px; max-width: 500px; text-align: center;">
         <h2 style="color: #cc0000; margin: 0 0 20px 0;">⚠️ Blocked Dangerous Site</h2>
         <p style="margin: 10px 0;">This link is suspected to be a phishing site.</p>
+        ${
+          message
+            ? `<p style="margin: 10px 0; font-size: 14px; color: #555;">${message}</p>`
+            : ''
+        }
         <p style="font-weight: bold; color: #cc0000;">Confidence: ${(
           confidence * 100
         ).toFixed(1)}%</p>
@@ -354,7 +390,7 @@ class QshingDefender {
 
     modal.querySelector('#qshing-proceed').addEventListener('click', () => {
       document.body.removeChild(modal);
-      window.open(url, '_blank');
+      this.allowNavigationToUrl(url);
     });
 
     modal.addEventListener('click', (event) => {
@@ -418,6 +454,24 @@ class QshingDefender {
         document.body.removeChild(modal);
       }
     });
+  }
+
+  /**
+   * Allow navigation after user confirmation
+   */
+  allowNavigationToUrl(url) {
+    chrome.runtime.sendMessage(
+      {
+        action: 'ALLOW_PHISHING_URL',
+        url
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          // Ignore errors (e.g., service worker inactive)
+        }
+        window.open(url, '_blank', 'noopener');
+      }
+    );
   }
 
   /**
