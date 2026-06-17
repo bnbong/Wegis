@@ -26,16 +26,18 @@ A Chrome extension that detects and blocks phishing, QR phishing, shortened link
 - Risky download checks with browser notifications
 - Real-time link phishing site monitoring for dynamically changing pages
 
-## Technology Stack
-
-- **Manifest Version**: 3
-- **Languages**: JavaScript (ES2022), HTML5, CSS3
-- **API**: [Wegis Server API](https://github.com/bnbong/Wegis_server)
-- **AI**: **mobileBERT + CNN multimodal model** for phishing detection
-- **Permissions**: activeTab, declarativeNetRequest, storage, downloads, notifications, host permissions
-- **External Libraries**: jsQR (QR code decoding)
-
 ## Quick Start
+
+### Browser Support
+
+| Browser                       | Status            | Notes                                                                                      |
+| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| Google Chrome, latest stable  | Supported         | Primary target browser.                                                                    |
+| Microsoft Edge, latest stable | Compatible        | Chromium-based; manually tested by loading the unpacked extension.                         |
+| Brave, Vivaldi, Arc, Opera    | Best effort       | May work if Chrome extension APIs are available, but not part of the official test matrix. |
+| Firefox                       | Not supported yet | Requires browser-specific Manifest V3 and background-script compatibility work.            |
+| Safari                        | Not supported yet | Requires Safari Web Extension conversion and separate validation.                          |
+| Mobile browsers               | Not supported     | Wegis requires a desktop browser extension environment.                                    |
 
 ### Official Installation
 
@@ -49,6 +51,15 @@ official download link will be provided later.
 4. Enable **Developer mode** in the top-right corner.
 5. Click **Load unpacked** and select the project root folder that contains `manifest.json`.
 6. Confirm that **Wegis** appears in the extension list and is enabled.
+
+## Technology Stack
+
+- **Manifest Version**: 3
+- **Languages**: JavaScript (ES2022), HTML5, CSS3
+- **API**: [Wegis Server API](https://github.com/bnbong/Wegis_server)
+- **AI**: **mobileBERT + CNN multimodal model** for phishing detection
+- **Permissions**: activeTab, declarativeNetRequest, storage, downloads, notifications, host permissions
+- **External Libraries**: jsQR (QR code decoding)
 
 ## Usage
 
