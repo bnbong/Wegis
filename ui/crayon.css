@@ -1,0 +1,76 @@
+/* ==========================================================================
+   Wegis shared "Crayon Sketchbook" theme tokens + fonts.
+   Linked first by popup.html and options.html; page-specific layout lives in
+   popup.css / options.css.
+   ========================================================================== */
+
+/* Korean handwriting font (Gaegu, OFL) bundled locally so Hangul also looks
+   hand-drawn. Restricted to Hangul code points via unicode-range, so it only
+   loads when Korean text is actually rendered and Latin keeps the system
+   handwriting fonts below. */
+@font-face {
+  font-family: 'Gaegu';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/gaegu-korean-400.woff2') format('woff2');
+  unicode-range: U+1100-11FF, U+3000-303F, U+3130-318F, U+A960-A97F, U+AC00-D7A3,
+    U+D7B0-D7FF, U+FF00-FFEF;
+}
+@font-face {
+  font-family: 'Gaegu';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../fonts/gaegu-korean-700.woff2') format('woff2');
+  unicode-range: U+1100-11FF, U+3000-303F, U+3130-318F, U+A960-A97F, U+AC00-D7A3,
+    U+D7B0-D7FF, U+FF00-FFEF;
+}
+
+:root {
+  /* Handwriting font stack — system "cute" fonts for Latin, bundled Gaegu for
+     Hangul (both work offline once the extension is installed). */
+  --wegis-font: 'Comic Sans MS', 'Chalkboard SE', 'Chalkboard', 'Marker Felt',
+    'Segoe Print', 'Comic Neue', 'Bradley Hand', 'Gaegu', system-ui, sans-serif;
+
+  --paper: #fffdf5;
+  --paper-2: #fff6e3;
+  --ink: #4a3f35; /* warm brown "pencil" ink */
+  --ink-soft: #9b8b78;
+
+  --crayon-red: #e8483f;
+  --crayon-orange: #ff9f1c;
+  --crayon-yellow: #ffd23f;
+  --crayon-green: #5fbf66;
+  --crayon-blue: #4d96ff;
+  --crayon-purple: #9b5de5;
+  --crayon-pink: #ff7eb6;
+
+  --line: #ead9b8; /* faint pencil divider */
+  /* Softer crayon-line color for borders (lighter than the text ink). */
+  --crayon-stroke: #c2b291;
+
+  /* Brand colors taken from the new crayon logo (teal eraser + navy link). */
+  --brand-navy: #1f3a6d;
+  --brand-teal: #16b6a3;
+
+  /* Reusable hand-drawn (wobbly) border-radius presets. */
+  --wobble: 18px 12px 20px 10px / 10px 20px 12px 18px;
+  --wobble-sm: 12px 8px 14px 7px / 7px 14px 8px 12px;
+  --wobble-pill: 40px 36px 42px 38px / 38px 42px 36px 40px;
+
+  /* Crayon-textured edge: four straight strokes whose fill is speckled by a
+     thresholded fractal-noise mask (grain, NOT geometry displacement). Because
+     the strokes stay straight, the border renders cleanly even inside rotated
+     containers — it just looks like a crayon line drawn along each side. */
+  --crayon-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' preserveAspectRatio='none'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='2' seed='4' result='n'/%3E%3CfeComponentTransfer in='n' result='m'%3E%3CfeFuncA type='discrete' tableValues='0 0 1 1 1 1'/%3E%3C/feComponentTransfer%3E%3CfeComposite in='SourceGraphic' in2='m' operator='in'/%3E%3C/filter%3E%3Cg fill='%23c2b291' filter='url(%23g)'%3E%3Crect x='0' y='0' width='120' height='13'/%3E%3Crect x='0' y='107' width='120' height='13'/%3E%3Crect x='0' y='0' width='13' height='120'/%3E%3Crect x='107' y='0' width='13' height='120'/%3E%3C/g%3E%3C/svg%3E");
+
+  /* Faint dark crayon grain, layered over colored buttons for a waxy texture. */
+  --crayon-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' seed='3'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.12 0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}

@@ -18,7 +18,8 @@ module.exports = [
         'warn',
         {
           argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_'
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_'
         }
       ],
       'no-console': 'off',
@@ -38,6 +39,8 @@ module.exports = [
         chrome: 'readonly',
         browser: 'readonly',
         LinkCollector: 'readonly',
+        WegisCore: 'readonly',
+        importScripts: 'readonly',
         jsQR: 'readonly'
       }
     }
@@ -59,6 +62,27 @@ module.exports = [
     }
   },
   {
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node
+      }
+    }
+  },
+  {
+    // Shared UMD core: runs in browser, service worker AND Node (CommonJS),
+    // so it needs both browser/worker and node globals.
+    files: ['lib/wegis-core.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.serviceworker,
+        ...globals.node
+      }
+    }
+  },
+  {
     // Ignores must be in a separate block to apply globally:
     // https://eslint.org/docs/latest/use/configure/configuration-files#globally-ignoring-files-with-ignores
     ignores: [
@@ -66,7 +90,6 @@ module.exports = [
       'node_modules/**/*',
       'dist/**/*',
       'build/**/*',
-      'lib/**/*',
       '**/*.min.js',
       '*.generated.js',
       '*.log'

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Wegis fixture — download links</title>
+  </head>
+  <body>
+    <h1>Download link fixtures</h1>
+    <p>
+      Load this page with the extension installed and click each link. Expected
+      behavior is noted next to each. The background <code>downloads</code>
+      guard is the authoritative layer; the in-page modal is the first warning.
+    </p>
+    <ul>
+      <li>
+        <a href="https://example.com/app.exe">app.exe</a>
+        — high risk (executable), modal expected
+      </li>
+      <li>
+        <a href="https://example.com/installer.EXE">installer.EXE</a>
+        — uppercase extension must still be detected
+      </li>
+      <li>
+        <a href="https://example.com/invoice.pdf.exe">invoice.pdf.exe</a>
+        — deceptive double extension, high risk
+      </li>
+      <li>
+        <a href="https://example.com/archive.zip?token=abc&amp;v=2">
+          archive.zip?token=abc&amp;v=2
+        </a>
+        — query string must not hide the .zip extension
+      </li>
+      <li>
+        <a href="https://example.com/report.pdf" download="q1-report.pdf">
+          report.pdf (download attr)
+        </a>
+        — medium risk document
+      </li>
+      <li>
+        <a href="https://example.com/photo.png">photo.png</a>
+        — low risk, no modal expected
+      </li>
+    </ul>
+  </body>
+</html>

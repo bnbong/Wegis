@@ -1,155 +1,513 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <title>Wegis Demo Page</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wegis Demo — crayon over danger</title>
     <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 40px auto;
-        max-width: 720px;
-        line-height: 1.6;
-        color: #222;
+      /* Korean handwriting font (Gaegu, OFL), bundled locally and limited to
+         Hangul so Korean text looks hand-drawn while Latin keeps the cute
+         system fonts. */
+      @font-face {
+        font-family: 'Gaegu';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url('../fonts/gaegu-korean-400.woff2') format('woff2');
+        unicode-range: U+1100-11FF, U+3000-303F, U+3130-318F, U+A960-A97F,
+          U+AC00-D7A3, U+D7B0-D7FF, U+FF00-FFEF;
+      }
+      @font-face {
+        font-family: 'Gaegu';
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url('../fonts/gaegu-korean-700.woff2') format('woff2');
+        unicode-range: U+1100-11FF, U+3000-303F, U+3130-318F, U+A960-A97F,
+          U+AC00-D7A3, U+D7B0-D7FF, U+FF00-FFEF;
       }
 
-      h1,
+      :root {
+        --wegis-font: 'Comic Sans MS', 'Chalkboard SE', 'Chalkboard',
+          'Marker Felt', 'Segoe Print', 'Comic Neue', 'Gaegu', system-ui,
+          sans-serif;
+        --paper: #fffdf5;
+        --paper-2: #fff6e3;
+        --ink: #4a3f35;
+        --ink-soft: #9b8b78;
+        --crayon-stroke: #c2b291; /* soft crayon-line color for borders */
+        --brand-navy: #1f3a6d;
+        --brand-teal: #16b6a3;
+        --crayon-red: #e8483f;
+        --crayon-orange: #ff9f1c;
+        --crayon-green: #5fbf66;
+        --crayon-blue: #4d96ff;
+        --line: #ead9b8;
+        --wobble: 18px 12px 22px 10px / 10px 22px 12px 18px;
+        /* Crayon-textured straight strokes (grain mask, not displacement) so
+           the border looks drawn with a crayon and stays clean when rotated. */
+        --crayon-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' preserveAspectRatio='none'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='2' seed='4' result='n'/%3E%3CfeComponentTransfer in='n' result='m'%3E%3CfeFuncA type='discrete' tableValues='0 0 1 1 1 1'/%3E%3C/feComponentTransfer%3E%3CfeComposite in='SourceGraphic' in2='m' operator='in'/%3E%3C/filter%3E%3Cg fill='%23c2b291' filter='url(%23g)'%3E%3Crect x='0' y='0' width='120' height='13'/%3E%3Crect x='0' y='107' width='120' height='13'/%3E%3Crect x='0' y='0' width='13' height='120'/%3E%3Crect x='107' y='0' width='13' height='120'/%3E%3C/g%3E%3C/svg%3E");
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 0 16px 48px;
+        font-family: var(--wegis-font);
+        color: var(--ink);
+        background-color: var(--paper);
+        background-image: radial-gradient(var(--line) 1.1px, transparent 1.2px),
+          radial-gradient(var(--line) 1.1px, transparent 1.2px);
+        background-position:
+          0 0,
+          13px 13px;
+        background-size: 26px 26px;
+      }
+
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+
+      /* Language switcher */
+      .lang-switch {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 14px 0 0;
+      }
+
+      .lang-btn {
+        font-family: var(--wegis-font);
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+        color: var(--ink);
+        background: #fff;
+        border: 3px solid transparent;
+        border-image: var(--crayon-edge) 14 / 3px / 0 round;
+        border-radius: 12px 8px 13px 9px / 9px 13px 8px 12px;
+        padding: 5px 13px;
+      }
+
+      .lang-btn.active {
+        background: var(--crayon-blue);
+        color: #fff;
+      }
+
+      /* Hero */
+      .hero {
+        text-align: center;
+        padding: 14px 0 8px;
+      }
+
+      .hero-logo {
+        width: 190px;
+        max-width: 60%;
+        height: auto;
+        transform: rotate(-2deg);
+      }
+
+      .hero-sub {
+        font-size: 18px;
+        color: var(--brand-navy);
+        margin: 6px 0 0;
+        transform: rotate(-0.6deg);
+      }
+
+      /* Cards with a hand-drawn crayon outline (no drop shadow) */
+      .card {
+        position: relative;
+        background: #fff;
+        border: 4px solid transparent;
+        border-image: var(--crayon-edge) 14 / 4px / 0 round;
+        border-radius: var(--wobble);
+        padding: 22px 24px;
+        margin: 22px 0;
+      }
+
+      .card:nth-of-type(odd) {
+        transform: rotate(-0.5deg);
+      }
+      .card:nth-of-type(even) {
+        transform: rotate(0.5deg);
+      }
+
+      .note {
+        background: var(--paper-2);
+      }
+
       h2 {
-        color: #0d47a1;
+        font-size: 22px;
+        margin: 0 0 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        position: relative;
+      }
+
+      h2::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: -4px;
+        bottom: -7px;
+        height: 5px;
+        border-radius: 60% 40% 55% 45% / 100% 100% 100% 100%;
+        background: repeating-linear-gradient(
+            95deg,
+            var(--crayon-orange) 0,
+            var(--crayon-orange) 5px,
+            rgba(0, 0, 0, 0.06) 5px,
+            rgba(0, 0, 0, 0.06) 8px
+          ),
+          var(--crayon-orange);
+        transform: rotate(-0.6deg);
       }
 
       p {
-        margin-bottom: 1.2em;
+        line-height: 1.6;
+        margin: 0 0 12px;
       }
 
-      section {
-        margin-bottom: 2em;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 20px;
-        background-color: #fafafa;
+      .hint {
+        font-size: 13px;
+        color: var(--ink-soft);
       }
 
-      ul {
+      ol {
+        line-height: 1.8;
+        padding-left: 22px;
+        margin: 0 0 8px;
+      }
+
+      .link-list {
         list-style: none;
-        padding-left: 0;
+        padding: 0;
+        margin: 0;
       }
 
-      li {
-        margin-bottom: 12px;
+      .link-list li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 0;
+        border-bottom: 2px dashed var(--line);
+        flex-wrap: wrap;
       }
 
-      .tag {
-        display: inline-block;
-        padding: 2px 8px;
-        margin-right: 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        font-weight: 700;
+      .link-list li:last-child {
+        border-bottom: none;
       }
 
-      .tag-spam {
-        background-color: #ff5252;
-        color: #fff;
-      }
-
-      .tag-ham {
-        background-color: #43a047;
-        color: #fff;
-      }
-
-      a.demo-link {
-        color: #1565c0;
-        text-decoration: none;
+      a {
+        color: var(--brand-navy);
+        text-decoration-style: wavy;
+        text-decoration-thickness: 1.5px;
+        text-underline-offset: 3px;
         word-break: break-all;
       }
 
-      a.demo-link:hover {
-        text-decoration: underline;
+      .tag {
+        flex: 0 0 auto;
+        display: inline-block;
+        min-width: 64px;
+        text-align: center;
+        padding: 3px 11px;
+        border: 3px solid transparent;
+        border-image: var(--crayon-edge) 14 / 3px / 0 round;
+        font-size: 12px;
+        font-weight: 700;
+        color: #fff;
+        transform: rotate(-2deg);
+      }
+
+      .tag-spam {
+        background: var(--crayon-red);
+      }
+      .tag-ham {
+        background: var(--crayon-green);
+      }
+      .tag-dl {
+        background: var(--crayon-orange);
+      }
+
+      /* QR row */
+      .qr-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        justify-content: center;
+      }
+
+      figure.qr {
+        margin: 0;
+        text-align: center;
+        width: 180px;
+      }
+
+      figure.qr img {
+        width: 170px;
+        height: 170px;
+        background: #fff;
+        border: 4px solid transparent;
+        border-image: var(--crayon-edge) 14 / 4px / 0 round;
+        padding: 6px;
+      }
+
+      figcaption {
+        font-size: 13px;
+        color: var(--ink-soft);
+        margin-top: 8px;
       }
     </style>
   </head>
   <body>
-    <h1>Wegis Demo Page</h1>
-    <p>
-      Wegis browser extension demo page. <br />
-      The links below are labeled to indicate whether they are legitimate (<span
-        class="tag tag-ham"
-        >ham</span
-      >) or suspected phishing (<span class="tag tag-spam">spam</span>).
-    </p>
+    <div class="wrap">
+      <div class="lang-switch">
+        <button type="button" class="lang-btn" data-lang="ko">한국어</button>
+        <button type="button" class="lang-btn" data-lang="en">English</button>
+      </div>
 
-    <section>
-      <h2>Phishing Samples</h2>
-      <ul>
-        <li>
-          <span class="tag tag-spam">spam</span>
-          <a
-            class="demo-link"
-            href="https://testsafebrowsing.appspot.com/s/phishing.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            >testsafebrowsing.appspot.com/s/phishing.html</a
-          >
-        </li>
-        <li>
-          <span class="tag tag-spam">spam</span>
-          <a
-            class="demo-link"
-            href="https://testsafebrowsing.appspot.com/s/phishing-two.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            >testsafebrowsing.appspot.com/s/phishing-two.html</a
-          >
-        </li>
-        <li>
-          <span class="tag tag-spam">spam</span>
-          <a
-            class="demo-link"
-            href="https://testsafebrowsing.appspot.com/s/malware.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            >testsafebrowsing.appspot.com/s/malware.html</a
-          >
-        </li>
-      </ul>
-    </section>
+      <header class="hero">
+        <img
+          src="../icons/wegis_logo_general.png"
+          alt="Wegis"
+          class="hero-logo"
+        />
+        <p class="hero-sub" data-i18n="heroSub">
+          위험한 링크를 크레용처럼 슥— 지워주는 브라우저 확장
+        </p>
+      </header>
 
-    <section>
-      <h2>Legitimate Samples</h2>
-      <ul>
-        <li>
-          <span class="tag tag-ham">ham</span>
-          <a
-            class="demo-link"
-            href="https://www.google.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            >www.google.com</a
-          >
-        </li>
-        <li>
-          <span class="tag tag-ham">ham</span>
-          <a
-            class="demo-link"
-            href="https://www.wikipedia.org/"
-            target="_blank"
-            rel="noopener noreferrer"
-            >www.wikipedia.org</a
-          >
-        </li>
-        <li>
-          <span class="tag tag-ham">ham</span>
-          <a
-            class="demo-link"
-            href="https://github.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            >github.com</a
-          >
-        </li>
-      </ul>
-    </section>
+      <section class="card note">
+        <h2 data-i18n="howTitle">✏️ 시연 방법</h2>
+        <ol>
+          <li data-i18n="howStep1">
+            <code>chrome://extensions</code> → <b>개발자 모드</b> 켜기 →
+            <b>압축해제된 확장 프로그램을 로드</b> → Wegis 폴더 선택
+          </li>
+          <li data-i18n="howStep2">
+            툴바의 Wegis 아이콘으로 보호가 켜져 있는지 확인 후 이 페이지
+            새로고침
+          </li>
+          <li data-i18n="howStep3">
+            위험 링크는 <b>크레용으로 슥슥 지워지고</b>, 클릭하면 경고가 뜹니다
+          </li>
+        </ol>
+        <p class="hint" data-i18n="howHint">
+          크레용 효과는 Wegis 서버(<code>api.bnbong.com</code>)가 해당 링크를
+          위험으로 판정할 때 나타납니다. QR/다운로드는 고위험으로 분류되어 서버
+          판정과 무관하게 경고가 표시됩니다.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="phishTitle"><span>🎣</span> 피싱 의심 링크</h2>
+        <p data-i18n="phishDesc">
+          위험 판정 시 아래 링크들이 크레용으로 지워지고 클릭이 차단됩니다.
+        </p>
+        <ul class="link-list">
+          <li>
+            <span class="tag tag-spam" data-i18n="tagDanger">위험</span>
+            <a
+              href="https://testsafebrowsing.appspot.com/s/phishing.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              >testsafebrowsing.appspot.com/s/phishing.html</a
+            >
+          </li>
+          <li>
+            <span class="tag tag-spam" data-i18n="tagDanger">위험</span>
+            <a
+              href="https://testsafebrowsing.appspot.com/s/phishing-two.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              >testsafebrowsing.appspot.com/s/phishing-two.html</a
+            >
+          </li>
+          <li>
+            <span class="tag tag-spam" data-i18n="tagDanger">위험</span>
+            <a
+              href="https://testsafebrowsing.appspot.com/s/malware.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              >testsafebrowsing.appspot.com/s/malware.html</a
+            >
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="safeTitle"><span>✅</span> 정상 링크</h2>
+        <p data-i18n="safeDesc">
+          정상 링크는 그대로 둡니다. 과도하게 지우지 않아요.
+        </p>
+        <ul class="link-list">
+          <li>
+            <span class="tag tag-ham" data-i18n="tagSafe">정상</span>
+            <a href="https://www.google.com/" target="_blank" rel="noopener"
+              >www.google.com</a
+            >
+          </li>
+          <li>
+            <span class="tag tag-ham" data-i18n="tagSafe">정상</span>
+            <a href="https://www.wikipedia.org/" target="_blank" rel="noopener"
+              >www.wikipedia.org</a
+            >
+          </li>
+          <li>
+            <span class="tag tag-ham" data-i18n="tagSafe">정상</span>
+            <a href="https://github.com/" target="_blank" rel="noopener"
+              >github.com</a
+            >
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="qrTitle"><span>📷</span> 비정상 QR 코드</h2>
+        <p data-i18n="qrDesc">
+          위험하거나 검증 불가한 QR 위에는 크레용 색칠 오버레이가 덮여,
+          휴대폰으로 찍을 수 없게 막습니다.
+        </p>
+        <div class="qr-row">
+          <figure class="qr">
+            <img
+              crossorigin="anonymous"
+              alt="피싱 페이지로 연결되는 QR"
+              src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=https://testsafebrowsing.appspot.com/s/phishing.html"
+            />
+            <figcaption data-i18n="qrCap1">
+              가짜 로그인 페이지로 연결되는 QR
+            </figcaption>
+          </figure>
+          <figure class="qr">
+            <img
+              crossorigin="anonymous"
+              alt="단축 링크 QR"
+              src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=https://bit.ly/3WegisDemo"
+            />
+            <figcaption data-i18n="qrCap2">
+              최종 목적지를 숨긴 단축 링크 QR
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="dlTitle"><span>⬇️</span> 위험 다운로드 링크</h2>
+        <p data-i18n="dlDesc">클릭하면 다운로드 전에 경고 모달이 뜹니다.</p>
+        <ul class="link-list">
+          <li>
+            <span class="tag tag-dl" data-i18n="tagExe">실행파일</span>
+            <a href="https://example.com/security-update.exe"
+              >security-update.exe</a
+            >
+          </li>
+          <li>
+            <span class="tag tag-dl" data-i18n="tagDouble">이중 확장자</span>
+            <a href="https://example.com/invoice.pdf.exe">invoice.pdf.exe</a>
+          </li>
+          <li>
+            <span class="tag tag-dl" data-i18n="tagZip">압축 파일</span>
+            <a href="https://example.com/photos.zip?token=abc123"
+              >photos.zip?token=abc123</a
+            >
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <script>
+      // Simple two-language switcher. Strings are static + trusted (our own
+      // demo page), so innerHTML is fine and keeps the inline <b>/<code> markup.
+      const I18N = {
+        ko: {
+          heroSub: '위험한 링크를 크레용처럼 슥— 지워주는 브라우저 확장',
+          howTitle: '✏️ 시연 방법',
+          howStep1:
+            '<code>chrome://extensions</code> → <b>개발자 모드</b> 켜기 → <b>압축해제된 확장 프로그램을 로드</b> → Wegis 폴더 선택',
+          howStep2:
+            '툴바의 Wegis 아이콘으로 보호가 켜져 있는지 확인 후 이 페이지 새로고침',
+          howStep3:
+            '위험 링크는 <b>크레용으로 슥슥 지워지고</b>, 클릭하면 경고가 뜹니다',
+          howHint:
+            '크레용 효과는 Wegis 서버(<code>api.bnbong.com</code>)가 해당 링크를 위험으로 판정할 때 나타납니다. QR/다운로드는 고위험으로 분류되어 서버 판정과 무관하게 경고가 표시됩니다.',
+          phishTitle: '<span>🎣</span> 피싱 의심 링크',
+          phishDesc:
+            '위험 판정 시 아래 링크들이 크레용으로 지워지고 클릭이 차단됩니다.',
+          safeTitle: '<span>✅</span> 정상 링크',
+          safeDesc: '정상 링크는 그대로 둡니다. 과도하게 지우지 않아요.',
+          qrTitle: '<span>📷</span> 비정상 QR 코드',
+          qrDesc:
+            '위험하거나 검증 불가한 QR 위에는 크레용 색칠 오버레이가 덮여, 휴대폰으로 찍을 수 없게 막습니다.',
+          qrCap1: '가짜 로그인 페이지로 연결되는 QR',
+          qrCap2: '최종 목적지를 숨긴 단축 링크 QR',
+          dlTitle: '<span>⬇️</span> 위험 다운로드 링크',
+          dlDesc: '클릭하면 다운로드 전에 경고 모달이 뜹니다.',
+          tagDanger: '위험',
+          tagSafe: '정상',
+          tagExe: '실행파일',
+          tagDouble: '이중 확장자',
+          tagZip: '압축 파일'
+        },
+        en: {
+          heroSub: 'A browser extension that scribbles out dangerous links',
+          howTitle: '✏️ How to run the demo',
+          howStep1:
+            '<code>chrome://extensions</code> → turn on <b>Developer mode</b> → <b>Load unpacked</b> → pick the Wegis folder',
+          howStep2:
+            'Confirm protection is on via the Wegis toolbar icon, then reload this page',
+          howStep3:
+            'Dangerous links get <b>scribbled over with crayon</b>; clicking one shows a block warning',
+          howHint:
+            'The crayon effect appears when the Wegis server (<code>api.bnbong.com</code>) flags a link as dangerous. QR codes and downloads are treated as high-risk and are warned regardless of the server verdict.',
+          phishTitle: '<span>🎣</span> Suspected phishing links',
+          phishDesc:
+            'When flagged, these links get colored over with crayon and clicks are blocked.',
+          safeTitle: '<span>✅</span> Legitimate links',
+          safeDesc: 'Safe links are left alone — Wegis never over-scribbles.',
+          qrTitle: '<span>📷</span> Malicious QR codes',
+          qrDesc:
+            'Dangerous or unverifiable QR codes are covered with a crayon coloring overlay so they cannot be scanned with a phone.',
+          qrCap1: 'QR that leads to a fake login page',
+          qrCap2: 'Shortened-link QR that hides its final destination',
+          dlTitle: '<span>⬇️</span> Risky download links',
+          dlDesc: 'Clicking one shows a warning modal before the download.',
+          tagDanger: 'Danger',
+          tagSafe: 'Safe',
+          tagExe: 'Executable',
+          tagDouble: 'Double ext.',
+          tagZip: 'Archive'
+        }
+      };
+
+      function setLang(lang) {
+        const dict = I18N[lang];
+        if (!dict) {
+          return;
+        }
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-i18n]').forEach((el) => {
+          const key = el.getAttribute('data-i18n');
+          if (dict[key] !== undefined) {
+            el.innerHTML = dict[key];
+          }
+        });
+        document.querySelectorAll('.lang-btn').forEach((b) => {
+          b.classList.toggle('active', b.dataset.lang === lang);
+        });
+      }
+
+      document.querySelectorAll('.lang-btn').forEach((b) => {
+        b.addEventListener('click', () => setLang(b.dataset.lang));
+      });
+
+      setLang('ko');
+    </script>
   </body>
 </html>

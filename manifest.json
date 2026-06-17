@@ -1,14 +1,20 @@
 {
   "manifest_version": 3,
   "name": "Wegis",
-  "version": "1.1.0",
-  "description": "Browser extension that protects users from phishing attacks",
+  "version": "2.0.0",
+  "description": "Scribbles out dangerous links and QR codes right on the page — like erasing them with a crayon — while blocking phishing, shortened, and malicious download links.",
 
-  "permissions": ["activeTab", "storage", "declarativeNetRequest"],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "declarativeNetRequest",
+    "downloads",
+    "notifications"
+  ],
 
   "host_permissions": [
     "<all_urls>",
-    "https://api.bnbong.xyz/api/v1/wegis-server/*"
+    "https://api.bnbong.com/api/v1/wegis-server/*"
   ],
 
   "background": {
@@ -20,6 +26,7 @@
       "matches": ["<all_urls>"],
       "js": [
         "lib/jsqr.min.js",
+        "lib/wegis-core.js",
         "content/link-collector.js",
         "content/content-script.js"
       ],

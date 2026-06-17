@@ -3,26 +3,54 @@
  * Handles background logic for the extension
  */
 
+// Shared pure helpers (verdict model, shortener + download risk detection) and
+// the QR decoder, both reused for cross-origin QR fallback below.
+importScripts('../lib/wegis-core.js', '../lib/jsqr.min.js');
+
+const {
+  VERDICTS,
+  normalizeVerdict,
+  makeErrorVerdict,
+  isDangerousVerdict,
+  isShortenerHost,
+  isHighRiskSource,
+  evaluateDownloadRisk,
+  shouldBlock
+} = self.WegisCore;
+
 class QshingBackgroundService {
   constructor() {
     this.cache = new Map();
     this.stats = {
       blockedSites: 0,
       checkedUrls: 0,
+      errorCount: 0,
       lastUpdate: Date.now()
     };
+
+    // Live copy of user settings, kept in sync via storage.onChanged.
+    this.settings = {
+      qshingEnabled: true,
+      blockPhishing: true,
+      showWarnings: true,
+      checkDownloads: true,
+      scanQRCodes: true
+    };
+    this.whitelist = [];
+    // Fixed tuning constants (not user-configurable).
+    this.CACHE_TTL_MS = 3600 * 1000; // verdict cache lifetime
+    this.API_DELAY_MS = 500; // pause between per-URL batch waves
+    // Max redirect hops to follow when resolving shortened / redirected URLs.
+    this.MAX_REDIRECT_HOPS = 5;
     this.extensionVersion = chrome.runtime.getManifest
       ? chrome.runtime.getManifest().version
       : 'unknown';
 
     // Wegis Server API endpoints
-    this.API_BASE = 'https://api.bnbong.xyz/api/v1/wegis-server';
+    this.API_BASE = 'https://api.bnbong.com/api/v1/wegis-server';
     this.ENDPOINTS = {
       analyzeCheck: `${this.API_BASE}/analyze/check`,
-      analyzeBatch: `${this.API_BASE}/analyze/batch`,
-      analyzeRecent: `${this.API_BASE}/analyze/recent`,
-      health: `${this.API_BASE}/health`,
-      feedback: `${this.API_BASE}/feedback`
+      analyzeBatch: `${this.API_BASE}/analyze/batch`
     };
 
     this.init();
@@ -37,6 +65,13 @@ class QshingBackgroundService {
     // Restore cached statistics
     this.restoreStatsFromStorage();
 
+    // Load user settings and whitelist, then keep them in sync.
+    this.loadSettings();
+    this.loadWhitelist();
+    chrome.storage.onChanged.addListener((changes, area) => {
+      this.onStorageChanged(changes, area);
+    });
+
     // Extension installation handler
     chrome.runtime.onInstalled.addListener((details) => {
       this.onInstalled(details);
@@ -48,14 +83,82 @@ class QshingBackgroundService {
       return true; // Return true for async response
     });
 
-    // Setup web request blocking
-    this.setupWebRequestBlocking();
-
     // Initialize blocking rules from stored blocklist
     this.initializeBlockingRules();
 
+    // Monitor downloads through the Chrome downloads API
+    this.setupDownloadProtection();
+
     // Setup periodic cache cleaning
     this.setupCacheCleaning();
+  }
+
+  /**
+   * Load persisted settings into the live in-memory copy.
+   */
+  async loadSettings() {
+    try {
+      const stored = await chrome.storage.sync.get(Object.keys(this.settings));
+      this.settings = {
+        qshingEnabled: stored.qshingEnabled !== false,
+        blockPhishing: stored.blockPhishing !== false,
+        showWarnings: stored.showWarnings !== false,
+        checkDownloads: stored.checkDownloads !== false,
+        scanQRCodes: stored.scanQRCodes !== false
+      };
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  }
+
+  /**
+   * Load the user whitelist (domains that bypass analysis entirely).
+   */
+  async loadWhitelist() {
+    try {
+      const { whitelist } = await chrome.storage.local.get(['whitelist']);
+      this.whitelist = Array.isArray(whitelist) ? whitelist : [];
+    } catch (error) {
+      console.error('Failed to load whitelist:', error);
+      this.whitelist = [];
+    }
+  }
+
+  /**
+   * React to settings / whitelist changes without needing a worker restart.
+   */
+  onStorageChanged(changes, area) {
+    if (area === 'sync') {
+      for (const key of Object.keys(this.settings)) {
+        if (changes[key]) {
+          this.settings[key] = changes[key].newValue !== false;
+        }
+      }
+    }
+    if (area === 'local' && changes.whitelist) {
+      this.whitelist = Array.isArray(changes.whitelist.newValue)
+        ? changes.whitelist.newValue
+        : [];
+    }
+  }
+
+  /**
+   * True when the URL's host (or a parent domain) is whitelisted by the user.
+   */
+  isWhitelisted(url) {
+    if (!this.whitelist.length) {
+      return false;
+    }
+    const host = self.WegisCore.getHost(url);
+    if (!host) {
+      return false;
+    }
+    return this.whitelist.some((domain) => {
+      const d = String(domain)
+        .toLowerCase()
+        .replace(/^www\./, '');
+      return host === d || host.endsWith(`.${d}`);
+    });
   }
 
   /**
@@ -70,7 +173,8 @@ class QshingBackgroundService {
         qshingEnabled: true,
         blockPhishing: true,
         showWarnings: true,
-        checkDownloads: true
+        checkDownloads: true,
+        scanQRCodes: true
       });
 
       // Open welcome page (optional)
@@ -87,23 +191,35 @@ class QshingBackgroundService {
     try {
       switch (request.action) {
         case 'CHECK_URL': {
-          const result = await this.checkUrl(request.url);
+          const result = await this.checkUrl(request.url, {
+            sourceType: request.sourceType || 'link'
+          });
           sendResponse(result);
           break;
         }
 
         case 'CHECK_BATCH_URLS': {
-          const results = await this.checkBatchUrls(request.urls);
+          const results = await this.checkBatchUrls(request.urls, {
+            sourceType: request.sourceType || 'link'
+          });
           sendResponse(results);
           break;
         }
 
-        case 'GET_STATS':
-          sendResponse(this.stats);
+        case 'DECODE_QR_IMAGE': {
+          // Cross-origin QR fallback: content-script canvas was tainted, so
+          // decode here where host permissions bypass CORS.
+          const decoded = await this.decodeQrFromUrl(request.src);
+          sendResponse(decoded);
+          break;
+        }
+
+        case 'GET_SETTINGS':
+          sendResponse({ settings: this.settings, whitelist: this.whitelist });
           break;
 
-        case 'GET_CACHE_SIZE':
-          sendResponse({ size: this.cache.size });
+        case 'GET_STATS':
+          sendResponse(this.stats);
           break;
 
         case 'CLEAR_CACHE':
@@ -111,36 +227,23 @@ class QshingBackgroundService {
           sendResponse({ success: true });
           break;
 
-        case 'BLOCK_URL':
-          await this.addToBlocklist(request.url);
+        case 'CLEAR_BLOCKING':
+          await this.clearAllBlocking();
           sendResponse({ success: true });
           break;
 
-        case 'UNBLOCK_URL':
-          await this.removeFromBlocklist(request.url);
+        case 'ALLOW_PHISHING_URL': {
+          // Accept a single url or an array (original + resolved final URL).
+          const toAllow = Array.isArray(request.urls)
+            ? request.urls
+            : [request.url];
+          for (const allowUrl of toAllow) {
+            if (allowUrl) {
+              this.cache.delete(allowUrl);
+              await this.removeBlockingRule(allowUrl);
+            }
+          }
           sendResponse({ success: true });
-          break;
-
-        case 'GET_BLOCKED_URLS': {
-          const blockedUrls = await this.getBlockedUrls();
-          sendResponse(blockedUrls);
-          break;
-        }
-
-        case 'TEST_API_CONNECTION': {
-          const testResult = await this.testApiConnection();
-          sendResponse(testResult);
-          break;
-        }
-
-        case 'ALLOW_PHISHING_URL':
-          await this.removeBlockingRule(request.url);
-          sendResponse({ success: true });
-          break;
-
-        case 'SUBMIT_FEEDBACK': {
-          const feedbackResult = await this.submitFeedback(request.payload);
-          sendResponse(feedbackResult);
           break;
         }
 
@@ -154,134 +257,356 @@ class QshingBackgroundService {
   }
 
   /**
-   * Check single URL
+   * Check a single URL and return a normalized verdict object.
+   *
+   * Flow: whitelist -> cache -> resolve redirects (when relevant) -> analyze
+   * the final URL -> normalize verdict -> block both original and final URLs
+   * for dangerous verdicts.
+   *
+   * @param {string} url
+   * @param {{ sourceType?: string }} options
    */
-  async checkUrl(url) {
-    try {
-      // Check cache
-      const cached = this.cache.get(url);
-      if (cached && Date.now() - cached.timestamp < 3600000) {
-        return cached;
-      }
+  async checkUrl(url, options = {}) {
+    const sourceType = options.sourceType || 'link';
+    // High-risk sources (QR / download / shortener) require a "strict" check:
+    // the final redirect destination must be analyzed, and a non-strict cached
+    // result (e.g. from an earlier plain-link scan) must NOT be reused.
+    const needStrict = isHighRiskSource(sourceType);
 
-      console.log(`Checking URL: ${url}`);
-
-      // API request with enhanced error handling
-      const requestBody = JSON.stringify({ url });
-      console.log(`Sending API request to: ${this.ENDPOINTS.analyzeCheck}`);
-      console.log(`Request body: ${requestBody}`);
-
-      const response = await fetch(this.ENDPOINTS.analyzeCheck, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'User-Agent': 'Wegis-Extension/1.0.0'
+    // 1. Whitelisted hosts bypass analysis entirely.
+    if (this.isWhitelisted(url)) {
+      return this.finalizeResult(
+        {
+          ...normalizeVerdict(
+            { data: { verdict: VERDICTS.SAFE } },
+            {
+              inputUrl: url,
+              finalUrl: url,
+              sourceType
+            }
+          ),
+          reasonCodes: ['whitelisted']
         },
-        body: requestBody,
-        mode: 'cors',
-        credentials: 'omit'
-      });
+        { skipBlock: true, skipStats: true, strict: true }
+      );
+    }
 
-      console.log(`API response status: ${response.status}`);
-      console.log('API response headers:', response.headers);
+    // 2. Serve from cache when fresh — but never serve a non-strict cached
+    //    result to a strict (high-risk) request.
+    const cached = this.cache.get(url);
+    if (
+      cached &&
+      Date.now() - cached.timestamp < this.CACHE_TTL_MS &&
+      (!needStrict || cached.strict)
+    ) {
+      return cached;
+    }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`API error response: ${errorText}`);
-        throw new Error(
-          `API request failed: ${response.status} ${response.statusText} - ${errorText}`
+    // 3. Resolve shortened / redirected URLs to their final destination.
+    let finalUrl = url;
+    let redirectChain = [url];
+    const needsResolution =
+      isShortenerHost(url) || isHighRiskSource(sourceType);
+    if (needsResolution) {
+      const resolved = await this.resolveUrl(url);
+      finalUrl = resolved.finalUrl;
+      redirectChain = resolved.redirectChain;
+      // If the final destination is whitelisted, treat as safe.
+      if (finalUrl !== url && this.isWhitelisted(finalUrl)) {
+        return this.finalizeResult(
+          {
+            ...normalizeVerdict(
+              { data: { verdict: VERDICTS.SAFE } },
+              {
+                inputUrl: url,
+                finalUrl,
+                redirectChain,
+                sourceType
+              }
+            ),
+            reasonCodes: ['whitelisted_final']
+          },
+          { skipBlock: true, skipStats: true, strict: true }
         );
       }
+    }
 
-      const data = await response.json();
+    const context = { inputUrl: url, finalUrl, redirectChain, sourceType };
 
-      const result = {
-        url,
-        result: data.data.result,
-        confidence: data.data.confidence,
-        timestamp: Date.now(),
-        message: data.message
-      };
-
-      // Save to cache
-      this.cache.set(url, result);
-
-      // Update statistics
-      this.stats.checkedUrls++;
-      if (result.result) {
-        this.stats.blockedSites++;
-        // Add dynamic blocking rule for phishing site
-        await this.addBlockingRule(url);
-      }
-      this.stats.lastUpdate = Date.now();
-      await this.saveStatsToStorage();
-      this.notifyStatsUpdated();
-
-      return result;
+    try {
+      const data = await this.requestAnalysis(finalUrl);
+      const verdict = normalizeVerdict(data, context);
+      return this.finalizeResult(verdict, { strict: needsResolution });
     } catch (error) {
       console.error(`Error checking URL (${url}):`, error);
-
-      const errorResult = {
+      // Fail-closed: never silently report a failed check as "safe".
+      this.stats.errorCount++;
+      const verdict = makeErrorVerdict(context, error.message);
+      // Cache errors only briefly so transient failures self-heal, and never
+      // mark an error result as strict so a later check re-runs.
+      const result = {
+        ...verdict,
         url,
-        result: false,
-        confidence: 0,
-        timestamp: Date.now(),
-        error: error.message
+        strict: false,
+        timestamp: Date.now()
       };
-
-      return errorResult;
+      this.cache.set(url, {
+        ...result,
+        timestamp: Date.now() - this.CACHE_TTL_MS + 60000
+      });
+      return result;
     }
   }
 
   /**
-   * Check batch URLs
+   * POST a URL to the analysis endpoint and return the parsed JSON. The server
+   * contract is exactly `{ url }` (PhishingDetectionRequest), so we send only
+   * that — redirect resolution + source typing are tracked client-side.
    */
-  async checkBatchUrls(urls) {
-    // Try server-side batch endpoint first; fallback to per-URL on failure
-    try {
-      const requestBody = JSON.stringify(urls);
-      console.log(
-        `Sending batch API request to: ${this.ENDPOINTS.analyzeBatch}`
+  async requestAnalysis(targetUrl) {
+    const response = await fetch(this.ENDPOINTS.analyzeCheck, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({ url: targetUrl }),
+      mode: 'cors',
+      credentials: 'omit'
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `API request failed: ${response.status} ${response.statusText} - ${errorText}`
       );
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Persist a verdict to cache + stats and apply blocking rules. Centralized so
+   * both single and batch paths behave identically.
+   */
+  async finalizeResult(verdict, opts = {}) {
+    const result = {
+      ...verdict,
+      url: verdict.inputUrl,
+      strict: Boolean(opts.strict),
+      timestamp: Date.now()
+    };
+
+    // Cache against both the original and final URLs.
+    this.cache.set(result.inputUrl, result);
+    if (result.finalUrl && result.finalUrl !== result.inputUrl) {
+      this.cache.set(result.finalUrl, result);
+    }
+
+    if (!opts.skipStats) {
+      this.stats.checkedUrls++;
+      if (isDangerousVerdict(result.verdict)) {
+        this.stats.blockedSites++;
+      }
+      this.stats.lastUpdate = Date.now();
+      await this.saveStatsToStorage();
+      this.notifyStatsUpdated();
+    }
+
+    // Hard-block dangerous verdicts (honoring the blockPhishing setting) on
+    // both the original and the resolved final URL.
+    if (!opts.skipBlock && shouldBlock(result.verdict, this.settings)) {
+      await this.addBlockingRule(result.inputUrl);
+      if (result.finalUrl && result.finalUrl !== result.inputUrl) {
+        await this.addBlockingRule(result.finalUrl);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Follow HTTP redirects to discover the final destination of a URL. Uses
+   * host permissions to read cross-origin redirects; falls back to a single
+   * "follow" request when intermediate Location headers are not readable.
+   */
+  async resolveUrl(url, maxHops = this.MAX_REDIRECT_HOPS) {
+    const chain = [url];
+    let current = url;
+    let finalUrl = url;
+
+    try {
+      for (let hop = 0; hop < maxHops; hop++) {
+        let response;
+        try {
+          response = await fetch(current, {
+            method: 'HEAD',
+            redirect: 'manual',
+            credentials: 'omit',
+            cache: 'no-store'
+          });
+        } catch {
+          response = await fetch(current, {
+            method: 'GET',
+            redirect: 'manual',
+            credentials: 'omit',
+            cache: 'no-store'
+          });
+        }
+
+        const isRedirect =
+          response.type === 'opaqueredirect' ||
+          [301, 302, 303, 307, 308].includes(response.status);
+
+        if (!isRedirect) {
+          finalUrl = response.url || current;
+          if (finalUrl !== current && !chain.includes(finalUrl)) {
+            chain.push(finalUrl);
+          }
+          return { finalUrl, redirectChain: chain, resolved: true };
+        }
+
+        const location =
+          response.type === 'opaqueredirect'
+            ? null
+            : response.headers.get('location');
+
+        if (!location) {
+          // Cannot read the intermediate hop; do one "follow" to get the end.
+          const followed = await fetch(current, {
+            method: 'HEAD',
+            redirect: 'follow',
+            credentials: 'omit',
+            cache: 'no-store'
+          }).catch(() => null);
+          if (followed && followed.url) {
+            finalUrl = followed.url;
+            if (finalUrl !== current && !chain.includes(finalUrl)) {
+              chain.push(finalUrl);
+            }
+          }
+          return { finalUrl, redirectChain: chain, resolved: true };
+        }
+
+        const next = new URL(location, current).toString();
+        if (chain.includes(next)) {
+          // Redirect loop guard.
+          return { finalUrl: next, redirectChain: chain, resolved: true };
+        }
+        chain.push(next);
+        current = next;
+        finalUrl = next;
+      }
+      return { finalUrl, redirectChain: chain, resolved: true };
+    } catch (error) {
+      console.warn(`Redirect resolution failed for ${url}:`, error);
+      return {
+        finalUrl,
+        redirectChain: chain,
+        resolved: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Check a batch of URLs. High-risk sources (QR / download / shortener) and
+   * any cache-fresh URLs are handled individually so they get redirect
+   * resolution and whitelist treatment; the remainder go through the batch
+   * endpoint. Everything is returned as normalized verdict objects.
+   *
+   * @param {string[]} urls
+   * @param {{ sourceType?: string }} options
+   */
+  async checkBatchUrls(urls, options = {}) {
+    const sourceType = options.sourceType || 'link';
+    const unique = [...new Set((urls || []).filter(Boolean))];
+
+    // High-risk sources must each take the strict single-URL path so redirects
+    // are resolved and the final destination is analyzed — the batch endpoint
+    // does neither.
+    if (isHighRiskSource(sourceType)) {
+      const out = [];
+      const batchSize = 5;
+      for (let i = 0; i < unique.length; i += batchSize) {
+        const wave = unique.slice(i, i + batchSize);
+        const settled = await Promise.allSettled(
+          wave.map((url) => this.checkUrl(url, { sourceType }))
+        );
+        settled.forEach((res, index) => {
+          out.push(
+            res.status === 'fulfilled'
+              ? res.value
+              : {
+                  ...makeErrorVerdict(
+                    { inputUrl: wave[index], sourceType },
+                    res.reason?.message || 'High-risk check error'
+                  ),
+                  url: wave[index],
+                  strict: false,
+                  timestamp: Date.now()
+                }
+          );
+        });
+        if (i + batchSize < unique.length) {
+          await this.delay(this.API_DELAY_MS);
+        }
+      }
+      return out;
+    }
+
+    const results = [];
+    const remaining = [];
+
+    for (const url of unique) {
+      const cached = this.cache.get(url);
+      if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+        results.push(cached);
+      } else if (this.isWhitelisted(url) || isShortenerHost(url)) {
+        // Needs per-URL whitelist / redirect handling.
+        results.push(await this.checkUrl(url, { sourceType }));
+      } else {
+        remaining.push(url);
+      }
+    }
+
+    if (remaining.length === 0) {
+      return results;
+    }
+
+    // Try the server batch endpoint for the plain links. Keep the legacy array
+    // payload so the extension stays compatible with the current server; the
+    // batch path only ever carries plain links (high-risk routed away above).
+    try {
       const response = await fetch(this.ENDPOINTS.analyzeBatch, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          'User-Agent': 'Wegis-Extension/1.0.0'
+          'User-Agent': `Wegis-Extension/${this.extensionVersion}`
         },
-        body: requestBody,
+        body: JSON.stringify(remaining),
         mode: 'cors',
         credentials: 'omit'
       });
 
       if (response.ok) {
         const data = await response.json();
-        // Expecting array of { url, result, confidence } or similar
-        if (Array.isArray(data.data)) {
-          const nowTs = Date.now();
-          const normalized = data.data.map((item) => ({
-            url: item.url,
-            result: Boolean(item.result),
-            confidence: Number(item.confidence || 0),
-            timestamp: nowTs,
-            message: data.message
-          }));
-
-          // Update cache and stats
-          for (const r of normalized) {
-            this.cache.set(r.url, r);
-            this.stats.checkedUrls++;
-            if (r.result) {
-              this.stats.blockedSites++;
-              await this.addBlockingRule(r.url);
-            }
+        const items = Array.isArray(data.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : null;
+        if (items) {
+          for (const item of items) {
+            const inputUrl = item.url || item.inputUrl;
+            const verdict = normalizeVerdict(
+              { data: item, message: data.message },
+              { inputUrl, finalUrl: item.finalUrl || inputUrl, sourceType }
+            );
+            results.push(await this.finalizeResult(verdict, { strict: false }));
           }
-          this.stats.lastUpdate = Date.now();
-          await this.saveStatsToStorage();
-          this.notifyStatsUpdated();
-          return normalized;
+          return results;
         }
       }
       console.warn(
@@ -294,38 +619,32 @@ class QshingBackgroundService {
       );
     }
 
-    // Fallback: per-URL sequential batching
-    const results = [];
+    // Fallback: per-URL checks in small waves to respect rate limits.
     const batchSize = 5;
-    for (let i = 0; i < urls.length; i += batchSize) {
-      const batch = urls.slice(i, i + batchSize);
-      const batchPromises = batch.map((url) => this.checkUrl(url));
-      const batchResults = await Promise.allSettled(batchPromises);
-      batchResults.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          results.push(result.value);
+    for (let i = 0; i < remaining.length; i += batchSize) {
+      const batch = remaining.slice(i, i + batchSize);
+      const settled = await Promise.allSettled(
+        batch.map((url) => this.checkUrl(url, { sourceType }))
+      );
+      settled.forEach((res, index) => {
+        if (res.status === 'fulfilled') {
+          results.push(res.value);
         } else {
           results.push({
+            ...makeErrorVerdict(
+              { inputUrl: batch[index], sourceType },
+              res.reason?.message || 'Batch fallback error'
+            ),
             url: batch[index],
-            result: false,
-            confidence: 0,
-            timestamp: Date.now(),
-            error: result.reason?.message || 'Batch fallback error'
+            timestamp: Date.now()
           });
         }
       });
-      if (i + batchSize < urls.length) {
-        await this.delay(500);
+      if (i + batchSize < remaining.length) {
+        await this.delay(this.API_DELAY_MS);
       }
     }
     return results;
-  }
-
-  /**
-   * Setup declarative net request blocking
-   */
-  setupWebRequestBlocking() {
-    console.log('Declarative net request blocking initialized');
   }
 
   /**
@@ -340,6 +659,27 @@ class QshingBackgroundService {
       console.log(`Initialized ${blockedUrls.length} blocking rules`);
     } catch (error) {
       console.error('Error initializing blocking rules:', error);
+    }
+  }
+
+  /**
+   * Remove ALL dynamic blocking rules and clear the stored blocklist. Used by
+   * "Reset Settings" so blocking rules don't outlive a settings reset (they live
+   * in declarativeNetRequest, separate from chrome.storage).
+   */
+  async clearAllBlocking() {
+    try {
+      const rules = await chrome.declarativeNetRequest.getDynamicRules();
+      if (rules.length) {
+        await chrome.declarativeNetRequest.updateDynamicRules({
+          removeRuleIds: rules.map((rule) => rule.id)
+        });
+      }
+      await chrome.storage.local.set({ blockedUrls: [] });
+      this.cache.clear();
+      console.log(`Cleared ${rules.length} dynamic blocking rules`);
+    } catch (error) {
+      console.error('Error clearing blocking rules:', error);
     }
   }
 
@@ -411,48 +751,6 @@ class QshingBackgroundService {
   }
 
   /**
-   * Add URL to blocklist
-   */
-  async addToBlocklist(url) {
-    try {
-      const result = await chrome.storage.local.get(['blockedUrls']);
-      const blockedUrls = result.blockedUrls || [];
-
-      if (!blockedUrls.includes(url)) {
-        blockedUrls.push(url);
-        await chrome.storage.local.set({ blockedUrls });
-        // Add dynamic blocking rule
-        await this.addBlockingRule(url);
-        console.log(`URL added to blocklist: ${url}`);
-      }
-    } catch (error) {
-      console.error('Error adding to blocklist:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Remove URL from blocklist
-   */
-  async removeFromBlocklist(url) {
-    try {
-      const result = await chrome.storage.local.get(['blockedUrls']);
-      const blockedUrls = result.blockedUrls || [];
-
-      const filteredUrls = blockedUrls.filter(
-        (blockedUrl) => blockedUrl !== url
-      );
-      await chrome.storage.local.set({ blockedUrls: filteredUrls });
-      // Remove dynamic blocking rule
-      await this.removeBlockingRule(url);
-      console.log(`URL removed from blocklist: ${url}`);
-    } catch (error) {
-      console.error('Error removing from blocklist:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Get blocked URLs list
    */
   async getBlockedUrls() {
@@ -487,50 +785,161 @@ class QshingBackgroundService {
   }
 
   /**
-   * Test API connection
+   * Monitor downloads via the Chrome downloads API. Evaluates the final URL
+   * (after redirects), MIME type and filename, and cancels downloads that
+   * resolve to a phishing/suspicious verdict or carry deceptive double
+   * extensions.
    */
-  async testApiConnection() {
+  setupDownloadProtection() {
+    if (!chrome.downloads || !chrome.downloads.onCreated) {
+      console.warn('chrome.downloads API unavailable; download guard disabled');
+      return;
+    }
+    chrome.downloads.onCreated.addListener((item) => {
+      this.onDownloadCreated(item);
+    });
+  }
+
+  /**
+   * Evaluate a newly created download item and intervene if dangerous.
+   */
+  async onDownloadCreated(item) {
+    if (!this.settings.checkDownloads) {
+      return;
+    }
+
+    const downloadUrl = item.finalUrl || item.url;
+    if (!downloadUrl || !/^https?:/i.test(downloadUrl)) {
+      return;
+    }
+
+    const risk = evaluateDownloadRisk({
+      url: downloadUrl,
+      filename: item.filename,
+      mime: item.mime
+    });
+
+    // Ask the analysis backend about the (resolved) download URL.
+    let verdict = null;
     try {
-      console.log('Testing API connection...');
+      verdict = await this.checkUrl(downloadUrl, { sourceType: 'download' });
+    } catch (_) {
+      verdict = null;
+    }
 
-      // Use health endpoint for connectivity check
-      const response = await fetch(this.ENDPOINTS.health, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'Wegis-Extension/1.0.0'
-        },
-        mode: 'cors',
-        credentials: 'omit'
-      });
+    const dangerousVerdict = verdict && isDangerousVerdict(verdict.verdict);
+    const deceptive = risk.reasons.includes('deceptive_double_extension');
 
-      console.log(`Test API response status: ${response.status}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Test API error: ${errorText}`);
-        return {
-          success: false,
-          error: `API returned ${response.status}: ${errorText}`,
-          status: response.status
-        };
+    if (dangerousVerdict || deceptive) {
+      try {
+        await chrome.downloads.cancel(item.id);
+        await chrome.downloads.erase({ id: item.id });
+      } catch (error) {
+        console.warn('Failed to cancel dangerous download:', error);
       }
+      this.stats.blockedSites++;
+      this.stats.lastUpdate = Date.now();
+      await this.saveStatsToStorage();
+      this.notifyStatsUpdated();
+      this.notifyDownloadBlocked(downloadUrl, risk, verdict);
+      return;
+    }
 
-      const data = await response.json();
-      console.log('Test API response data:', data);
+    if (risk.risk === 'high' || risk.risk === 'medium') {
+      // Not confirmed malicious, but high-risk type — warn the user.
+      this.notifyDownloadWarning(downloadUrl, risk);
+    }
+  }
 
-      return {
-        success: true,
-        data,
-        message: 'API connection successful'
-      };
+  /**
+   * Show a system notification that a download was blocked.
+   */
+  notifyDownloadBlocked(url, risk, verdict) {
+    this.createNotification({
+      title: '⛔ Wegis blocked a dangerous download',
+      message: `${risk.filename || url}\nReason: ${
+        verdict && isDangerousVerdict(verdict.verdict)
+          ? verdict.verdict
+          : risk.reasons.join(', ') || 'high risk'
+      }`
+    });
+  }
+
+  /**
+   * Show a non-blocking caution notification for risky download types.
+   */
+  notifyDownloadWarning(url, risk) {
+    this.createNotification({
+      title: '⚠️ Wegis download caution',
+      message: `${risk.filename || url}\nThis file type (${
+        risk.extension || 'unknown'
+      }) can be risky. Only keep it if you trust the source.`
+    });
+  }
+
+  createNotification({ title, message }) {
+    if (!chrome.notifications || !chrome.notifications.create) {
+      console.warn(`[notification] ${title}: ${message}`);
+      return;
+    }
+    try {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+        title,
+        message,
+        priority: 2
+      });
     } catch (error) {
-      console.error('Test API connection failed:', error);
-      return {
-        success: false,
-        error: error.message,
-        type: error.name
-      };
+      console.warn('Failed to create notification:', error);
+    }
+  }
+
+  /**
+   * Decode a QR code from an image URL inside the service worker. Used as a
+   * fallback when the content-script canvas is tainted by a cross-origin image
+   * (host permissions let the worker fetch the bytes directly).
+   *
+   * @param {string} src image URL
+   * @returns {Promise<{ data: string|null, error?: string }>}
+   */
+  async decodeQrFromUrl(src) {
+    if (typeof jsQR === 'undefined') {
+      return { data: null, error: 'jsQR unavailable' };
+    }
+    if (
+      typeof OffscreenCanvas === 'undefined' ||
+      typeof createImageBitmap === 'undefined'
+    ) {
+      return { data: null, error: 'OffscreenCanvas unavailable' };
+    }
+    try {
+      const response = await fetch(src, {
+        credentials: 'omit',
+        cache: 'force-cache'
+      });
+      if (!response.ok) {
+        return { data: null, error: `fetch ${response.status}` };
+      }
+      const blob = await response.blob();
+      const bitmap = await createImageBitmap(blob);
+
+      // Downscale very large images for performance.
+      const maxDim = 1024;
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+
+      const canvas = new OffscreenCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close();
+
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const code = jsQR(imageData.data, width, height);
+      return { data: code ? code.data : null };
+    } catch (error) {
+      return { data: null, error: error.message };
     }
   }
 
@@ -560,77 +969,6 @@ class QshingBackgroundService {
       await chrome.storage.local.set({ qshingStats: this.stats });
     } catch (error) {
       console.error('Failed to save stats to storage:', error);
-    }
-  }
-
-  /**
-   * Submit user feedback to Wegis server
-   */
-  async submitFeedback(feedbackPayload = {}) {
-    try {
-      const {
-        url,
-        is_correct: isCorrect,
-        comment,
-        detected_result: detectedResult,
-        confidence,
-        metadata: metadataInput
-      } = feedbackPayload;
-
-      if (!url) {
-        throw new Error('Feedback URL is required.');
-      }
-
-      const normalizedConfidence = Number(confidence);
-      const metadata = {
-        ...(metadataInput && typeof metadataInput === 'object'
-          ? metadataInput
-          : {}),
-        extensionVersion: this.extensionVersion,
-        platform:
-          typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
-        submittedAt: new Date().toISOString()
-      };
-
-      const payload = {
-        url,
-        is_correct: Boolean(isCorrect),
-        comment: comment || '',
-        detected_result: Boolean(detectedResult),
-        confidence: Number.isFinite(normalizedConfidence)
-          ? Math.min(Math.max(normalizedConfidence, 0), 1)
-          : 0,
-        metadata
-      };
-
-      const response = await fetch(`${this.ENDPOINTS.feedback}/feedback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'User-Agent': 'Wegis-Extension/1.0.0'
-        },
-        body: JSON.stringify(payload),
-        mode: 'cors',
-        credentials: 'omit'
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Feedback request failed: ${response.status} ${response.statusText} - ${errorText}`
-        );
-      }
-
-      const data = await response.json();
-      return {
-        success: true,
-        message: data.message || 'Feedback submitted successfully.',
-        data
-      };
-    } catch (error) {
-      console.error('Failed to submit feedback:', error);
-      return { error: error.message };
     }
   }
 

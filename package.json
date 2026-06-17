@@ -1,17 +1,15 @@
 {
   "name": "Wegis",
-  "version": "1.0.0",
-  "description": "Browser extension that protects users from phishing attacks",
+  "version": "2.0.0",
+  "description": "Browser extension that erases dangerous links and QR codes on the page like a crayon, while blocking phishing, shortened, and malicious download links.",
   "main": "manifest.json",
   "scripts": {
-    "lint": "eslint . --ext .js",
-    "lint:fix": "eslint . --ext .js --fix",
-    "lint:css": "stylelint '**/*.css'",
-    "lint:css:fix": "stylelint '**/*.css' --fix",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write '**/*.{js,json,css,html,md}'",
     "format:check": "prettier --check '**/*.{js,json,css,html,md}'",
-    "lint:all": "npm run lint && npm run lint:css",
-    "fix:all": "npm run lint:fix && npm run lint:css:fix && npm run format",
+    "fix:all": "npm run lint:fix && npm run format",
     "prepare": "command -v pre-commit >/dev/null 2>&1 && pre-commit install || echo 'pre-commit not found, skipping hook installation'"
   },
   "repository": {
@@ -38,11 +36,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "browserslist": [
-    "last 2 Chrome versions",
-    "last 2 Firefox versions",
-    "last 2 Safari versions",
-    "last 2 Edge versions"
-  ]
+  }
 }

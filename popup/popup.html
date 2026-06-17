@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wegis</title>
+    <link rel="stylesheet" href="../ui/crayon.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
@@ -11,9 +12,9 @@
       <!-- Header -->
       <div class="header">
         <div class="logo">
-          <img src="../icons/icon48.png" alt="Wegis" class="logo-icon" />
           <h1>Wegis</h1>
         </div>
+        <p class="tagline">scribbling over danger</p>
         <div class="status" id="status">
           <span class="status-indicator" id="statusIndicator"></span>
           <span class="status-text" id="statusText">Protected</span>
@@ -55,10 +56,7 @@
             <span id="linkCount">0</span> links found
           </div>
         </div>
-        <button class="scan-button" id="scanButton">
-          <span class="scan-icon">🔍</span>
-          Scan Again
-        </button>
+        <button class="scan-button" id="scanButton">Scan Again</button>
       </div>
 
       <!-- Settings Section -->
@@ -90,26 +88,20 @@
       <!-- Action Buttons -->
       <div class="action-buttons">
         <button class="btn btn-secondary" id="optionsButton">
-          <span class="btn-icon">⚙️</span>
           Advanced Settings
         </button>
-        <button class="btn btn-secondary" id="helpButton">
-          <span class="btn-icon">❓</span>
-          Help
-        </button>
         <button class="btn btn-primary" id="feedbackButton">
-          <span class="btn-icon">💬</span>
           Send Feedback
         </button>
       </div>
 
       <!-- Footer -->
       <div class="footer">
-        <div class="version">v1.0.0</div>
+        <div class="version">v2.0.0</div>
         <div class="powered-by">
           Powered by
           <a
-            href="https://github.com/bnbong/Qshing_server"
+            href="https://github.com/bnbong/Wegis_server"
             target="_blank"
             rel="noopener noreferrer"
             >Wegis API</a
@@ -122,106 +114,6 @@
     <div class="loading-overlay" id="loadingOverlay" style="display: none">
       <div class="loading-spinner"></div>
       <div class="loading-text">Scanning...</div>
-    </div>
-
-    <!-- Feedback Modal -->
-    <div class="feedback-overlay" id="feedbackOverlay" style="display: none">
-      <div class="feedback-modal">
-        <button
-          type="button"
-          class="feedback-close"
-          id="feedbackCloseButton"
-          aria-label="Close feedback form"
-        >
-          ✕
-        </button>
-        <h2>Send Feedback</h2>
-        <p class="feedback-description">
-          Help us improve Wegis. Your comment will be proofread locally by
-          Chrome's built-in Proofreader before it is sent.
-        </p>
-        <form id="feedbackForm" class="feedback-form">
-          <label class="feedback-label" for="feedbackUrl">URL</label>
-          <input
-            type="url"
-            id="feedbackUrl"
-            name="feedbackUrl"
-            class="feedback-input"
-            placeholder="https://example.com"
-            required
-          />
-
-          <label class="feedback-label" for="feedbackDetectedResult"
-            >Detected Result</label
-          >
-          <select
-            id="feedbackDetectedResult"
-            name="feedbackDetectedResult"
-            class="feedback-input"
-          >
-            <option value="true">Flagged as Phishing</option>
-            <option value="false">Marked as Safe</option>
-          </select>
-
-          <label class="feedback-checkbox">
-            <input
-              type="checkbox"
-              id="feedbackIsCorrect"
-              name="feedbackIsCorrect"
-              checked
-            />
-            <span>I agree with Wegis' detection result</span>
-          </label>
-
-          <label class="feedback-label" for="feedbackConfidence"
-            >Confidence (0-100%)</label
-          >
-          <div class="feedback-range">
-            <input
-              type="range"
-              id="feedbackConfidence"
-              name="feedbackConfidence"
-              min="0"
-              max="100"
-              step="1"
-              value="0"
-            />
-            <span class="feedback-range-value" id="feedbackConfidenceValue"
-              >0%</span
-            >
-          </div>
-
-          <label class="feedback-label" for="feedbackComment">Comment</label>
-          <textarea
-            id="feedbackComment"
-            name="feedbackComment"
-            class="feedback-textarea"
-            rows="4"
-            placeholder="Share details about why this detection is correct or incorrect"
-            required
-          ></textarea>
-
-          <div class="feedback-status" id="feedbackStatus"></div>
-
-          <div class="feedback-actions">
-            <button
-              type="button"
-              class="btn btn-secondary"
-              id="feedbackCancelButton"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              class="btn btn-primary"
-              id="feedbackSubmitButton"
-            >
-              <span class="btn-icon">📨</span>
-              Submit Feedback
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
 
     <script src="popup.js"></script>

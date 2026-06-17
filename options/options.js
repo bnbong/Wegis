@@ -27,9 +27,6 @@ class QshingOptions {
     // Load settings
     await this.loadSettings();
 
-    // Load statistics
-    await this.loadStats();
-
     // Load whitelist
     await this.loadWhitelist();
 
@@ -42,37 +39,20 @@ class QshingOptions {
    */
   initElements() {
     this.elements = {
-      // General settings
-      qshingEnabled: document.getElementById('qshingEnabled'),
-      blockPhishing: document.getElementById('blockPhishing'),
-      showWarnings: document.getElementById('showWarnings'),
-      checkDownloads: document.getElementById('checkDownloads'),
-
-      // Advanced settings
+      // Protection (QR scanning is options-only; the rest live in the popup)
       scanQRCodes: document.getElementById('scanQRCodes'),
-      cacheTime: document.getElementById('cacheTime'),
-      apiDelay: document.getElementById('apiDelay'),
 
       // Whitelist
       whitelistDomain: document.getElementById('whitelistDomain'),
       addWhitelist: document.getElementById('addWhitelist'),
       whitelistList: document.getElementById('whitelistList'),
 
-      // Statistics
-      totalChecked: document.getElementById('totalChecked'),
-      totalBlocked: document.getElementById('totalBlocked'),
-      cacheSize: document.getElementById('cacheSize'),
-      successRate: document.getElementById('successRate'),
-
       // Data management
       clearCache: document.getElementById('clearCache'),
-      exportSettings: document.getElementById('exportSettings'),
-      importSettings: document.getElementById('importSettings'),
       resetSettings: document.getElementById('resetSettings'),
 
       // Others
-      saveIndicator: document.getElementById('saveIndicator'),
-      fileInput: document.getElementById('fileInput')
+      saveIndicator: document.getElementById('saveIndicator')
     };
   }
 
@@ -80,18 +60,8 @@ class QshingOptions {
    * Setup event listeners
    */
   setupEventListeners() {
-    // Settings checkboxes/selects
-    const settingElements = [
-      'qshingEnabled',
-      'blockPhishing',
-      'showWarnings',
-      'checkDownloads',
-      'scanQRCodes',
-      'cacheTime',
-      'apiDelay'
-    ];
-
-    settingElements.forEach((elementId) => {
+    // Settings toggles
+    ['scanQRCodes'].forEach((elementId) => {
       const element = this.elements[elementId];
       if (element) {
         element.addEventListener('change', (e) => {
@@ -119,18 +89,6 @@ class QshingOptions {
       this.clearCache();
     });
 
-    this.elements.exportSettings.addEventListener('click', () => {
-      this.exportSettings();
-    });
-
-    this.elements.importSettings.addEventListener('click', () => {
-      this.elements.fileInput.click();
-    });
-
-    this.elements.fileInput.addEventListener('change', (e) => {
-      this.importSettings(e.target.files[0]);
-    });
-
     this.elements.resetSettings.addEventListener('click', () => {
       this.resetSettings();
     });
@@ -141,70 +99,12 @@ class QshingOptions {
    */
   async loadSettings() {
     try {
-      const settings = await chrome.storage.sync.get([
-        'qshingEnabled',
-        'blockPhishing',
-        'showWarnings',
-        'checkDownloads',
-        'scanQRCodes',
-        'cacheTime',
-        'apiDelay'
-      ]);
-
+      const settings = await chrome.storage.sync.get(['scanQRCodes']);
       this.settings = {
-        qshingEnabled: settings.qshingEnabled !== false,
-        blockPhishing: settings.blockPhishing !== false,
-        showWarnings: settings.showWarnings !== false,
-        checkDownloads: settings.checkDownloads !== false,
-        scanQRCodes: settings.scanQRCodes !== false,
-        cacheTime: settings.cacheTime || '3600',
-        apiDelay: settings.apiDelay || '1000'
+        scanQRCodes: settings.scanQRCodes !== false
       };
-
-      console.log('Settings loaded:', this.settings);
     } catch (error) {
       console.error('Failed to load settings:', error);
-    }
-  }
-
-  /**
-   * Load statistics
-   */
-  async loadStats() {
-    try {
-      // Get statistics from background script
-      const stats = await chrome.runtime.sendMessage({ action: 'GET_STATS' });
-      const cacheInfo = await chrome.runtime.sendMessage({
-        action: 'GET_CACHE_SIZE'
-      });
-
-      if (stats && !stats.error) {
-        this.elements.totalChecked.textContent = this.formatNumber(
-          stats.checkedUrls || 0
-        );
-        this.elements.totalBlocked.textContent = this.formatNumber(
-          stats.blockedSites || 0
-        );
-
-        // Calculate success rate
-        const successRate =
-          stats.checkedUrls > 0
-            ? (
-                ((stats.checkedUrls - (stats.errorCount || 0)) /
-                  stats.checkedUrls) *
-                100
-              ).toFixed(1)
-            : 0;
-        this.elements.successRate.textContent = successRate + '%';
-      }
-
-      if (cacheInfo && !cacheInfo.error) {
-        this.elements.cacheSize.textContent = this.formatNumber(
-          cacheInfo.size || 0
-        );
-      }
-    } catch (error) {
-      console.error('Failed to load statistics:', error);
     }
   }
 
@@ -348,93 +248,11 @@ class QshingOptions {
 
     try {
       await chrome.runtime.sendMessage({ action: 'CLEAR_CACHE' });
-      await this.loadStats();
       alert('Cache cleared successfully.');
     } catch (error) {
       console.error('Failed to clear cache:', error);
       alert('Failed to clear cache.');
     }
-  }
-
-  /**
-   * Export settings
-   */
-  async exportSettings() {
-    try {
-      const allSettings = await chrome.storage.sync.get(null);
-      const whitelist = await chrome.storage.local.get(['whitelist']);
-
-      const exportData = {
-        settings: allSettings,
-        whitelist: whitelist.whitelist || [],
-        exportDate: new Date().toISOString(),
-        version: '1.0.0'
-      };
-
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-        type: 'application/json'
-      });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Wegis-settings-${
-        new Date().toISOString().split('T')[0]
-      }.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to export settings:', error);
-      alert('Failed to export settings.');
-    }
-  }
-
-  /**
-   * Import settings
-   */
-  async importSettings(file) {
-    if (!file) {
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      const importData = JSON.parse(text);
-
-      if (!importData.settings || !importData.version) {
-        throw new Error('Invalid settings file.');
-      }
-
-      if (
-        !confirm('Overwrite existing settings? This action cannot be undone.')
-      ) {
-        return;
-      }
-
-      // Import settings
-      await chrome.storage.sync.set(importData.settings);
-
-      // Import whitelist
-      if (importData.whitelist) {
-        await chrome.storage.local.set({ whitelist: importData.whitelist });
-      }
-
-      // Refresh UI
-      await this.loadSettings();
-      await this.loadWhitelist();
-      this.updateUI();
-
-      alert('Settings imported successfully.');
-    } catch (error) {
-      console.error('Failed to import settings:', error);
-      alert('Failed to import settings. Please check the file.');
-    }
-
-    // Reset file input
-    this.elements.fileInput.value = '';
   }
 
   /**
@@ -452,14 +270,16 @@ class QshingOptions {
         blockPhishing: true,
         showWarnings: true,
         checkDownloads: true,
-        scanQRCodes: true,
-        cacheTime: '3600',
-        apiDelay: '1000'
+        scanQRCodes: true
       };
 
       await chrome.storage.sync.clear();
       await chrome.storage.sync.set(defaultSettings);
       await chrome.storage.local.clear();
+
+      // Dynamic blocking rules live in declarativeNetRequest, not storage —
+      // clear them too so a reset truly removes all active blocking.
+      await chrome.runtime.sendMessage({ action: 'CLEAR_BLOCKING' });
 
       // Refresh UI
       await this.loadSettings();
@@ -485,29 +305,20 @@ class QshingOptions {
   }
 
   /**
-   * Domain validation
+   * Domain validation using the native URL parser (no hand-rolled regex).
    */
   isValidDomain(domain) {
-    const domainRegex =
-      /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
-    return domainRegex.test(domain);
-  }
-
-  /**
-   * Number formatting
-   */
-  formatNumber(num) {
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
-    } else if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
+    try {
+      const { hostname } = new URL(`https://${domain}`);
+      // Reject inputs that carried a path/port/auth or have no dot.
+      return hostname === domain.toLowerCase() && hostname.includes('.');
+    } catch (_) {
+      return false;
     }
-    return num.toString();
   }
 }
 
 // Initialize options page when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  const options = new QshingOptions();
-  window.qshingOptions = options;
+  new QshingOptions();
 });

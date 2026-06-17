@@ -1,12 +1,10 @@
 <p align="center">
-    <img align="top" width="30%" src="/icons/qshing_extension_icon.jpeg" alt="Wegis"/>
+    <img align="top" width="50%" src="icons/wegis_logo_general.png" alt="Wegis"/>
 </p>
-
+<p align="center">
+<em><b>Wegis:</b> Guarding Every Link, Every Time</em>
+</p>
 <div align="center">
-
-# Wegis Browser Extension
-
-**Guarding Every Link, Every Time**
 
 [![Release](https://img.shields.io/github/v/release/bnbong/Wegis?display_name=tag)](https://github.com/bnbong/Wegis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/bnbong/Wegis/blob/main/LICENSE)
@@ -19,119 +17,61 @@
 
 ---
 
-## Project Overview
+A Chrome extension that detects and blocks phishing, QR phishing, shortened links, and risky downloads in real time while you browse.
+
+As of **2.0**, Wegis doesn't just warn — it **erases** dangerous links right on
+the page you're looking at. Risky links are scribbled out with animated crayon
+strokes (and QR codes are crossed out with a "Blocked by Wegis" overlay), so the
+threat is unmistakable at a glance. The crayon is a pure visual layer on top of
+the existing security engine: click/keyboard blocking, href neutralization,
+original + final URL blocking rules, and QR/download protection are unchanged.
 
 ## Key Features
 
-- Automatic collection and analysis of all links on web pages
-- Real-time phishing site verification through Wegis Server API
+- **Crayon erase**: dangerous links are visually scribbled out on the page,
+  QR codes are crossed out — color/stroke varies per link, respects
+  `prefers-reduced-motion`
 - Blocking dangerous link access with warning notifications
-- Special protection for file download links (PDF, etc.)
-- Real-time link monitoring and pre-loading prevention
+- QR phishing, shortened link, and redirected URL protection
+- Risky download checks with browser notifications
+- Real-time link phishing site monitoring for dynamically changing pages
 
 ## Technology Stack
 
 - **Manifest Version**: 3
 - **Languages**: JavaScript (ES2022), HTML5, CSS3
-- **API**: Wegis Server API
-- **Permissions**: activeTab, declarativeNetRequest, storage, host permissions
+- **API**: [Wegis Server API](https://github.com/bnbong/Wegis_server)
+- **AI**: **mobileBERT + CNN multimodal model** for phishing detection
+- **Permissions**: activeTab, declarativeNetRequest, storage, downloads,
+  notifications, host permissions
 - **External Libraries**: jsQR (QR code decoding)
 
-## API Specification
+## Quick Start
 
-### Wegis Server API
+### Official Installation
 
-Base URL:
+official download link will be provided later.
 
-```
-https://api.bnbong.xyz/api/v1/wegis-server/
-```
+### Manual Installation
 
-Endpoints:
+1. Download this repository from GitHub with **Code > Download ZIP**, or clone
+   it with Git.
+2. If you downloaded a ZIP file, unzip it.
+3. Open Chrome and go to `chrome://extensions/`.
+4. Enable **Developer mode** in the top-right corner.
+5. Click **Load unpacked** and select the project root folder that contains
+   `manifest.json`.
+6. Confirm that **Wegis** appears in the extension list and is enabled.
 
-- POST `/analyze/check` — Single URL phishing analysis
-- POST `/analyze/batch` — Multiple URL batch analysis (for browser extensions)
-- GET `/analyze/recent` — Recent analysis results
-- GET `/health` — Server status check
-- POST `/feedback/*` — User feedback management
+## Usage
 
-## Project Structure
+- Wegis automatically scans links, QR codes, shortened links, and risky
+  downloads while you browse.
+- Click the Wegis toolbar icon to view status and quick settings.
+- Open the extension options page to adjust protection, warnings, QR scanning,
+  download checks, cache time, API delay, and the whitelist.
 
-```
-Wegis/
-├── manifest.json
-├── background/
-│   └── service-worker.js
-├── content/
-│   ├── content-script.js
-│   └── link-collector.js
-├── popup/
-│   ├── popup.html
-│   ├── popup.js
-│   └── popup.css
-├── options/
-│   ├── options.html
-│   ├── options.js
-│   └── options.css
-├── lib/
-│   └── jsqr.min.js
-├── icons/
-│   ├── icon16.png
-│   ├── icon48.png
-│   └── icon128.png
-└── README.md
-```
+## Contributing
 
-## Security Considerations
-
-- CSP (Content Security Policy) compliance
-- Principle of least privilege application
-- User data protection
-- API key security management
-- HTTPS communication enforcement
-
-## Development Setup
-
-### Prerequisites
-
-- Node.js (v18.0.0 or higher)
-- npm or yarn
-- Git
-
-### Setting up the development environment
-
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/bnbong/Wegis.git
-   cd Wegis
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Install pre-commit hooks**
-
-   ```bash
-   # Install pre-commit (if not already installed)
-   pip install pre-commit
-
-   # Install the hooks
-   pre-commit install
-   ```
-
-### Code Quality Tools
-
-#### Linting and Formatting
-
-- **ESLint**: JavaScript linting
-- **Stylelint**: CSS linting
-- **Prettier**: Code formatting
-- **Pre-commit hooks**: Automated checks before commits
-
-## Installation Guide
-
-Please refer to [INSTALL.md](INSTALL.md) for detailed installation instructions.
+Development setup and project checks are documented in
+[CONTRIBUTING.md](CONTRIBUTING.md).

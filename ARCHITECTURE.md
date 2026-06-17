@@ -10,13 +10,11 @@ Wegis is a Chrome browser extension that provides real-time protection against p
 
 #### Link Collector (`link-collector.js`)
 
-- **Purpose**: Extracts all types of links from web pages
+- **Purpose**: Collects clickable/scannable links from web pages
 - **Functions**:
   - URL pattern matching from text content
   - Hyperlink extraction from `<a>` tags
-  - QR code detection and decoding using jsQR library
-  - Download link identification by file extensions
-  - Social media card link parsing (Open Graph, Twitter Cards)
+  - QR code detection + decoding (jsQR, with a cross-origin service-worker fallback)
   - Dynamic content monitoring via Mutation Observer
 
 #### Content Script (`content-script.js`)
@@ -142,7 +140,7 @@ User clicks link → Event intercepted → Safety check → Allow/Block decision
 ### Wegis Server API
 
 ```
-Base: https://api.bnbong.xyz/api/v1/wegis-server/
+Base: https://api.bnbong.com/api/v1/wegis-server/
 Analyze (single): POST /analyze/check
 Analyze (batch):  POST /analyze/batch
 Recent:           GET  /analyze/recent
@@ -190,52 +188,8 @@ Fallback: Local cache and manual overrides
 - Minimal memory footprint
 - CPU usage monitoring and throttling
 
-## Extensibility Framework
+## Testing
 
-### Multi-browser Compatibility Preparation
-
-- Modular architecture allows easy porting
-- Standard web APIs where possible
-- Browser-specific code isolation
-- Feature detection patterns
-
-### Plugin System Design
-
-- Modular link collectors
-- Configurable protection policies
-- Custom API endpoint support
-- Third-party integration hooks
-
-## Testing & Quality Assurance
-
-### Automated Testing
-
-- Unit tests for each module
-- Integration tests for API communication
-- Performance benchmarking
-- Security vulnerability scanning
-
-### Manual Testing Scenarios
-
-- Various website types and structures
-- Different link formats and protocols
-- Edge cases and error conditions
-- Cross-browser compatibility verification
-
-## Deployment & Distribution
-
-### Development Build
-
-- Source code with detailed comments
-- Development logging enabled
-- Hot reload capabilities
-- Debug interface access
-
-### Production Build
-
-- Minified and optimized code
-- Production API endpoints
-- Error reporting integration
-- Performance monitoring
-
-This architecture ensures robust, scalable, and maintainable protection against phishing attacks while providing an excellent user experience.
+See [tests/README.md](tests/README.md) for the automated unit tests
+(`npm test`) covering the shared verdict/risk logic, and the manual browser
+fixtures for the DOM/QR/download behavior.

@@ -3,36 +3,44 @@
  */
 class LinkCollector {
   constructor() {
-    this.collectedLinks = new Set();
     this.observer = null;
+    // Cache decoded QR results keyed by image src to avoid re-decoding.
     this.qrCodeCache = new Map();
+    // Latest QR objects: { element, decodedUrl } — consumed by the defender to
+    // attach on-image warning overlays.
+    this.lastQRObjects = [];
+    // Toggled by the content script from the user's scanQRCodes setting.
+    this.scanQRCodes = true;
+    // Performance guard: max number of fresh QR decodes per scan.
+    this.MAX_QR_SCANS = 40;
+    this.MAX_QR_DIMENSION = 1024;
   }
 
   /**
    * Start collecting all links
    */
   async collectAllLinks() {
-    const links = {
-      urls: this.collectURLs(),
-      hyperlinks: this.collectHyperlinks(),
-      downloadLinks: this.collectDownloadLinks(),
-      socialCards: this.collectSocialCardLinks(),
-      qrCodes: await this.collectQRCodes()
-    };
+    const qrObjects = await this.collectQRObjects();
 
-    // Remove duplicates
+    // Clickable / scannable surfaces only: text URLs, anchors, QR codes.
     const allLinks = [
       ...new Set([
-        ...links.urls,
-        ...links.hyperlinks,
-        ...links.downloadLinks,
-        ...links.socialCards,
-        ...links.qrCodes
+        ...this.collectURLs(),
+        ...this.collectHyperlinks(),
+        ...qrObjects.map((q) => q.decodedUrl)
       ])
     ];
 
     console.log('Collected links:', allLinks.length);
     return allLinks;
+  }
+
+  /**
+   * Return the QR objects discovered in the most recent scan, each carrying
+   * the source element so the defender can overlay a warning on it.
+   */
+  getQRObjects() {
+    return this.lastQRObjects;
   }
 
   /**
@@ -65,181 +73,142 @@ class LinkCollector {
   }
 
   /**
-   * Collect download links
+   * Scan the page for QR codes and return rich objects:
+   *   { element, decodedUrl }
+   * Covers <img> (incl. <picture> via currentSrc), <canvas>, and elements with
+   * a CSS background-image. Cross-origin images that taint the local canvas are
+   * decoded in the service worker, which can fetch the bytes directly.
    */
-  collectDownloadLinks() {
-    const downloadLinks = [];
-    const downloadExtensions = [
-      'pdf',
-      'doc',
-      'docx',
-      'xls',
-      'xlsx',
-      'ppt',
-      'pptx',
-      'zip',
-      'rar',
-      '7z',
-      'tar',
-      'gz',
-      'exe',
-      'msi',
-      'dmg',
-      'pkg',
-      'apk',
-      'ipa'
-    ];
-
-    // Links with download attribute
-    const downloadElements = document.querySelectorAll('a[download]');
-    downloadElements.forEach((element) => {
-      const href = element.getAttribute('href');
-      if (href && this.isValidURL(href)) {
-        downloadLinks.push({
-          url: this.normalizeURL(href),
-          filename: element.getAttribute('download') || '',
-          type: 'download_attribute'
-        });
-      }
-    });
-
-    // Links presumed by file extension
-    const allLinks = document.querySelectorAll('a[href]');
-    allLinks.forEach((link) => {
-      const href = link.getAttribute('href');
-      if (href && this.isValidURL(href)) {
-        const url = this.normalizeURL(href);
-        const extension = this.getFileExtension(url);
-
-        if (downloadExtensions.includes(extension.toLowerCase())) {
-          downloadLinks.push({
-            url,
-            filename: this.getFilenameFromURL(url),
-            type: 'file_extension',
-            extension
-          });
-        }
-      }
-    });
-
-    return downloadLinks.map((link) => link.url);
-  }
-
-  /**
-   * Collect social card links (Open Graph, Twitter Card, etc.)
-   */
-  collectSocialCardLinks() {
-    const socialLinks = [];
-
-    // Open Graph
-    const ogUrls = document.querySelectorAll('meta[property="og:url"]');
-    ogUrls.forEach((meta) => {
-      const content = meta.getAttribute('content');
-      if (content && this.isValidURL(content)) {
-        socialLinks.push(this.normalizeURL(content));
-      }
-    });
-
-    // Twitter Card
-    const twitterUrls = document.querySelectorAll('meta[name="twitter:url"]');
-    twitterUrls.forEach((meta) => {
-      const content = meta.getAttribute('content');
-      if (content && this.isValidURL(content)) {
-        socialLinks.push(this.normalizeURL(content));
-      }
-    });
-
-    // Canonical URL
-    const canonicalLinks = document.querySelectorAll('link[rel="canonical"]');
-    canonicalLinks.forEach((link) => {
-      const href = link.getAttribute('href');
-      if (href && this.isValidURL(href)) {
-        socialLinks.push(this.normalizeURL(href));
-      }
-    });
-
-    return [...new Set(socialLinks)];
-  }
-
-  /**
-   * Extract links from QR codes
-   */
-  async collectQRCodes() {
-    if (typeof QrScanner === 'undefined' && typeof jsQR === 'undefined') {
+  async collectQRObjects() {
+    if (!this.scanQRCodes) {
+      this.lastQRObjects = [];
+      return [];
+    }
+    if (typeof jsQR === 'undefined') {
       console.warn('QR code library not available');
+      this.lastQRObjects = [];
       return [];
     }
 
-    const qrLinks = [];
-    const images = document.querySelectorAll('img');
-    const canvases = document.querySelectorAll('canvas');
+    const candidates = this.getQRCandidateElements();
+    const objects = [];
+    let freshScans = 0;
 
-    // Scan QR codes from images
-    for (const img of images) {
-      try {
-        const qrData = await this.scanQRFromImage(img);
-        if (qrData && this.isValidURL(qrData)) {
-          qrLinks.push(this.normalizeURL(qrData));
+    for (const candidate of candidates) {
+      if (freshScans >= this.MAX_QR_SCANS) {
+        break;
+      }
+      const cacheKey = candidate.src || null;
+      let decoded;
+
+      if (cacheKey && this.qrCodeCache.has(cacheKey)) {
+        decoded = this.qrCodeCache.get(cacheKey);
+      } else {
+        decoded = await this.decodeQRFromCandidate(candidate);
+        freshScans++;
+        if (cacheKey) {
+          this.qrCodeCache.set(cacheKey, decoded);
         }
-      } catch (error) {
-        // Ignore non-QR code images
+      }
+
+      if (decoded && this.isValidURL(decoded)) {
+        objects.push({
+          element: candidate.element,
+          decodedUrl: this.normalizeURL(decoded)
+        });
       }
     }
 
-    // Scan QR codes from canvas
-    for (const canvas of canvases) {
-      try {
-        const qrData = await this.scanQRFromCanvas(canvas);
-        if (qrData && this.isValidURL(qrData)) {
-          qrLinks.push(this.normalizeURL(qrData));
-        }
-      } catch (error) {
-        // Ignore non-QR code canvas
-      }
-    }
-
-    return [...new Set(qrLinks)];
+    this.lastQRObjects = objects;
+    return objects;
   }
 
   /**
-   * Scan QR code from image
+   * Build the list of QR scan candidates from images, canvases and CSS
+   * background images, skipping tiny elements unlikely to hold a scannable QR.
    */
-  async scanQRFromImage(imgElement) {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+  getQRCandidateElements() {
+    const candidates = [];
+    const minSize = 40;
 
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-
-        try {
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, canvas.width, canvas.height);
-
-          if (code) {
-            resolve(code.data);
-          } else {
-            reject(new Error('No QR code found'));
-          }
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = imgElement.src;
+    document.querySelectorAll('img').forEach((element) => {
+      const w = element.naturalWidth || element.width || 0;
+      const h = element.naturalHeight || element.height || 0;
+      if (w && h && (w < minSize || h < minSize)) {
+        return;
+      }
+      candidates.push({
+        element,
+        type: 'img',
+        src: element.currentSrc || element.src || null
+      });
     });
+
+    document.querySelectorAll('canvas').forEach((element) => {
+      if (element.width < minSize || element.height < minSize) {
+        return;
+      }
+      candidates.push({ element, type: 'canvas', src: null });
+    });
+
+    // Inline CSS background images (best-effort).
+    document
+      .querySelectorAll('[style*="background-image"]')
+      .forEach((element) => {
+        const src = this.extractBackgroundImageUrl(element);
+        if (src) {
+          candidates.push({ element, type: 'bg', src });
+        }
+      });
+
+    return candidates;
+  }
+
+  extractBackgroundImageUrl(element) {
+    try {
+      const bg =
+        element.style.backgroundImage ||
+        getComputedStyle(element).backgroundImage;
+      const match = bg && bg.match(/url\(["']?([^"')]+)["']?\)/i);
+      if (match && match[1]) {
+        return new URL(match[1], window.location.href).toString();
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   /**
-   * Scan QR code from canvas
+   * Decode a single QR candidate, falling back to the service worker for
+   * cross-origin images.
    */
-  async scanQRFromCanvas(canvasElement) {
+  async decodeQRFromCandidate(candidate) {
+    try {
+      if (candidate.type === 'canvas') {
+        return this.decodeViaCanvasElement(candidate.element);
+      }
+      if (candidate.type === 'img') {
+        const local = this.decodeViaLocalCanvas(candidate.element);
+        if (local) {
+          return local;
+        }
+      }
+      // Cross-origin <img>, tainted canvas, or CSS background: ask the worker.
+      if (candidate.src) {
+        return await this.decodeViaServiceWorker(candidate.src);
+      }
+    } catch (_) {
+      // Non-QR content or a tainted canvas: try the worker before giving up.
+      if (candidate.src) {
+        return this.decodeViaServiceWorker(candidate.src);
+      }
+    }
+    return null;
+  }
+
+  /** Decode directly from an on-page <canvas>. */
+  decodeViaCanvasElement(canvasElement) {
     const ctx = canvasElement.getContext('2d');
     const imageData = ctx.getImageData(
       0,
@@ -252,12 +221,58 @@ class LinkCollector {
       canvasElement.width,
       canvasElement.height
     );
+    return code ? code.data : null;
+  }
 
-    if (code) {
-      return code.data;
-    } else {
-      throw new Error('No QR code found');
+  /**
+   * Decode from an already-loaded <img> using a local canvas. Throws a
+   * SecurityError for cross-origin images (caught upstream to trigger the
+   * service-worker fallback).
+   */
+  decodeViaLocalCanvas(imgElement) {
+    const naturalW = imgElement.naturalWidth || imgElement.width;
+    const naturalH = imgElement.naturalHeight || imgElement.height;
+    if (!naturalW || !naturalH) {
+      return null;
     }
+
+    const scale = Math.min(
+      1,
+      this.MAX_QR_DIMENSION / Math.max(naturalW, naturalH)
+    );
+    const width = Math.max(1, Math.round(naturalW * scale));
+    const height = Math.max(1, Math.round(naturalH * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(imgElement, 0, 0, width, height);
+
+    // Throws SecurityError if the image tainted the canvas.
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const code = jsQR(imageData.data, width, height);
+    return code ? code.data : null;
+  }
+
+  /** Ask the background worker to fetch + decode a (cross-origin) image. */
+  decodeViaServiceWorker(src) {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage(
+          { action: 'DECODE_QR_IMAGE', src },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              resolve(null);
+              return;
+            }
+            resolve(response && response.data ? response.data : null);
+          }
+        );
+      } catch (_) {
+        resolve(null);
+      }
+    });
   }
 
   /**
@@ -287,6 +302,17 @@ class LinkCollector {
               }
             }
           });
+        } else if (mutation.type === 'attributes') {
+          // A dynamically swapped image src / background may now hold a QR.
+          const tag = mutation.target.tagName;
+          if (
+            tag === 'IMG' ||
+            tag === 'A' ||
+            mutation.attributeName === 'src' ||
+            mutation.attributeName === 'style'
+          ) {
+            shouldRecheck = true;
+          }
         }
       });
 
@@ -309,7 +335,9 @@ class LinkCollector {
 
     this.observer.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'href', 'style']
     });
   }
 
@@ -347,33 +375,6 @@ class LinkCollector {
       return urlObj.toString();
     } catch (_) {
       return url;
-    }
-  }
-
-  /**
-   * Extract file extension
-   */
-  getFileExtension(url) {
-    try {
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname;
-      const parts = pathname.split('.');
-      return parts.length > 1 ? parts[parts.length - 1] : '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  /**
-   * Extract filename from URL
-   */
-  getFilenameFromURL(url) {
-    try {
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname;
-      return pathname.split('/').pop() || '';
-    } catch (_) {
-      return '';
     }
   }
 }
