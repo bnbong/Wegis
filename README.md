@@ -14,9 +14,9 @@
 
 </div>
 
----
-
 A Chrome extension that detects and blocks phishing, QR phishing, shortened links, and risky downloads in real time while you browse.
+
+---
 
 ## Key Features
 
