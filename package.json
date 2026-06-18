@@ -1,6 +1,6 @@
 {
   "name": "Wegis",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Browser extension that erases dangerous links and QR codes on the page like a crayon, while blocking phishing, shortened, and malicious download links.",
   "main": "manifest.json",
   "scripts": {

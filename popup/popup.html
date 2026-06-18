@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="../ui/crayon.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
-  <body>
+  <body class="wegis-loading">
     <div class="container">
       <!-- Header -->
       <div class="header">
@@ -17,14 +17,15 @@
         <p class="tagline">scribbling over danger</p>
         <div class="status" id="status">
           <span class="status-indicator" id="statusIndicator"></span>
-          <span class="status-text" id="statusText">Protected</span>
+          <span class="status-text" id="statusText">Loading…</span>
         </div>
       </div>
 
-      <!-- Main Toggle -->
+      <!-- Main Toggle (state is set from storage once loaded; no checked default
+           so the toggle never flashes ON before settings are read) -->
       <div class="main-toggle">
         <label class="toggle-switch">
-          <input type="checkbox" id="mainToggle" checked />
+          <input type="checkbox" id="mainToggle" />
           <span class="slider"></span>
         </label>
         <span class="toggle-label">Real-time Protection</span>
@@ -64,21 +65,21 @@
         <h3>Settings</h3>
         <div class="setting-item">
           <label>
-            <input type="checkbox" id="blockPhishing" checked />
+            <input type="checkbox" id="blockPhishing" />
             <span class="checkmark"></span>
             Block Phishing Sites
           </label>
         </div>
         <div class="setting-item">
           <label>
-            <input type="checkbox" id="showWarnings" checked />
+            <input type="checkbox" id="showWarnings" />
             <span class="checkmark"></span>
             Show Warning Messages
           </label>
         </div>
         <div class="setting-item">
           <label>
-            <input type="checkbox" id="checkDownloads" checked />
+            <input type="checkbox" id="checkDownloads" />
             <span class="checkmark"></span>
             Check Download Files
           </label>
@@ -97,7 +98,7 @@
 
       <!-- Footer -->
       <div class="footer">
-        <div class="version">v2.0.0</div>
+        <div class="version">v2.0.1</div>
         <div class="powered-by">
           Powered by
           <a

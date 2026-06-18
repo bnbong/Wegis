@@ -23,14 +23,21 @@ class QshingPopup {
     // Setup event listeners
     this.setupEventListeners();
 
-    // Get current tab information
-    await this.getCurrentTab();
+    try {
+      // Get current tab information
+      await this.getCurrentTab();
 
-    // Load initial data
-    await this.loadInitialData();
+      // Load initial data
+      await this.loadInitialData();
 
-    // Update UI
-    this.updateUI();
+      // Update UI
+      this.updateUI();
+    } finally {
+      // Settings have been applied to the controls — reveal them (removes the
+      // loading state that hid the toggle/status until now). Always runs so a
+      // load error never leaves the popup stuck hidden.
+      document.body.classList.remove('wegis-loading');
+    }
   }
 
   /**

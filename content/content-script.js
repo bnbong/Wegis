@@ -56,6 +56,24 @@ class QshingDefender {
   }
 
   /**
+   * Enable/disable protection on this tab. Idempotent so the popup message and
+   * the storage.onChanged broadcast (which both reach the active tab) don't
+   * double-run. Off fully restores the page (hrefs + crayon + blocklist).
+   */
+  applyProtectionState(enabled) {
+    if (enabled === this.isEnabled) {
+      return;
+    }
+    this.isEnabled = enabled;
+    if (!enabled) {
+      this.linkCollector.stopObserving();
+      this.removeAllWarnings({ restoreLinks: true });
+    } else {
+      this.startProtection();
+    }
+  }
+
+  /**
    * Start protection features
    */
   async startProtection() {
@@ -141,8 +159,10 @@ class QshingDefender {
           this.settings[key] = changes[key].newValue !== false;
         }
       }
+      // Protection toggle propagates to EVERY open tab via storage (the popup
+      // only messages the active tab), so apply the full enable/disable here.
       if (changes.qshingEnabled) {
-        this.isEnabled = changes.qshingEnabled.newValue !== false;
+        this.applyProtectionState(changes.qshingEnabled.newValue !== false);
       }
       if (changes.scanQRCodes) {
         this.linkCollector.scanQRCodes = this.settings.scanQRCodes;
@@ -182,14 +202,7 @@ class QshingDefender {
           return true;
 
         case 'TOGGLE_PROTECTION':
-          this.isEnabled = request.enabled;
-          if (!this.isEnabled) {
-            this.linkCollector.stopObserving();
-            // Protection off: fully restore the page (hrefs + blocklist).
-            this.removeAllWarnings({ restoreLinks: true });
-          } else {
-            this.startProtection();
-          }
+          this.applyProtectionState(request.enabled);
           sendResponse({ success: true });
           break;
       }
@@ -200,7 +213,7 @@ class QshingDefender {
    * Check a batch of standard links via the background worker.
    */
   async checkLinks(urls) {
-    if (!urls || urls.length === 0) {
+    if (!this.isEnabled || !urls || urls.length === 0) {
       return;
     }
 
@@ -219,6 +232,9 @@ class QshingDefender {
    * QR images/canvases themselves so users don't scan them with a phone.
    */
   async processQRObjects() {
+    if (!this.isEnabled) {
+      return;
+    }
     const qrObjects = this.linkCollector.getQRObjects();
     if (!qrObjects || qrObjects.length === 0) {
       return;
@@ -292,6 +308,17 @@ class QshingDefender {
    * Check a single URL (used by the runtime message handler).
    */
   async checkSingleUrl(url, sourceType = 'link') {
+    if (!this.isEnabled) {
+      // Match the normal result shape (finalUrl/url/timestamp) for callers.
+      return {
+        ...WegisCore.normalizeVerdict(
+          { data: { verdict: WegisCore.VERDICTS.SAFE } },
+          { inputUrl: url, finalUrl: url, sourceType }
+        ),
+        url,
+        timestamp: Date.now()
+      };
+    }
     const cached = this.checkedUrls.get(url);
     if (cached && Date.now() - cached.timestamp < 3600000) {
       return cached;
@@ -324,6 +351,11 @@ class QshingDefender {
    * the user's blockPhishing / showWarnings settings.
    */
   processVerdict(result) {
+    // If protection was turned off while a check was in flight, drop the
+    // late-arriving result so nothing is re-erased/blocked after the toggle.
+    if (!this.isEnabled) {
+      return;
+    }
     if (!result || (!result.inputUrl && !result.url)) {
       return;
     }
@@ -643,7 +675,7 @@ class QshingDefender {
     // and links that are flagged by URL even when not visually erased (e.g.
     // showWarnings off).
     const guardedUrl = (anchor) => {
-      if (!anchor) {
+      if (!this.isEnabled || !anchor) {
         return null;
       }
       // For erased links the href may be neutralized to "#", so recover the
@@ -705,7 +737,7 @@ class QshingDefender {
     document.addEventListener(
       'click',
       (event) => {
-        if (!this.settings.checkDownloads) {
+        if (!this.isEnabled || !this.settings.checkDownloads) {
           return;
         }
         // Check every anchor and let evaluateDownloadRisk() decide — an

@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.1 (2026-06-18)
+
+### Fixed
+
+- Made Real-time Protection the master switch for background checks, content-script scans, download checks, and blocking rules.
+- Waited for stored settings before handling URL checks or download events, avoiding startup races with default-on settings.
+- Reduced download notification noise with rate limiting, deduplication, and high-risk-only system warnings.
+- Removed the popup toggle flash by loading saved settings before revealing controls.
+
 ## v2.0.0 (2026-06-17)
 
 ### Breaking Changes

@@ -233,6 +233,21 @@ input:checked + .slider:before {
   transform: rotate(-0.5deg);
 }
 
+/* Until settings are read from storage, hide the toggle/checkbox knobs and the
+   status dot so they never flash the wrong (default) state. popup.js removes
+   .wegis-loading once the real values are applied. */
+body.wegis-loading .slider::before,
+body.wegis-loading .checkmark,
+body.wegis-loading .status-indicator {
+  opacity: 0;
+}
+
+body.wegis-loading .slider,
+body.wegis-loading .slider::before,
+body.wegis-loading .checkmark {
+  transition: none;
+}
+
 /* --------------------------------------------------------------------------
    Cards (stats + current page)
    -------------------------------------------------------------------------- */

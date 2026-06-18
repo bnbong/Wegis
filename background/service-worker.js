@@ -37,9 +37,16 @@ class QshingBackgroundService {
       scanQRCodes: true
     };
     this.whitelist = [];
+    // Resolves once settings + whitelist have loaded (set in init()).
+    this.settingsReady = Promise.resolve();
+    // Notification rate limiting.
+    this.lastNotificationAt = 0;
+    this.recentNotificationKeys = new Map(); // key -> timestamp
     // Fixed tuning constants (not user-configurable).
     this.CACHE_TTL_MS = 3600 * 1000; // verdict cache lifetime
     this.API_DELAY_MS = 500; // pause between per-URL batch waves
+    this.NOTIFICATION_MIN_INTERVAL_MS = 10000; // >=10s between notifications
+    this.NOTIFICATION_DEDUPE_MS = 60000; // suppress same host/file for 60s
     // Max redirect hops to follow when resolving shortened / redirected URLs.
     this.MAX_REDIRECT_HOPS = 5;
     this.extensionVersion = chrome.runtime.getManifest
@@ -65,9 +72,14 @@ class QshingBackgroundService {
     // Restore cached statistics
     this.restoreStatsFromStorage();
 
-    // Load user settings and whitelist, then keep them in sync.
-    this.loadSettings();
-    this.loadWhitelist();
+    // Load user settings and whitelist, then keep them in sync. Until this
+    // resolves the in-memory settings are just defaults, so any path that acts
+    // on settings (checks, downloads, notifications) must await settingsReady
+    // first to avoid acting on stale "all on" defaults.
+    this.settingsReady = Promise.all([
+      this.loadSettings(),
+      this.loadWhitelist()
+    ]);
     chrome.storage.onChanged.addListener((changes, area) => {
       this.onStorageChanged(changes, area);
     });
@@ -132,6 +144,15 @@ class QshingBackgroundService {
       for (const key of Object.keys(this.settings)) {
         if (changes[key]) {
           this.settings[key] = changes[key].newValue !== false;
+        }
+      }
+      // Real-time Protection toggled: off must also tear down active blocking
+      // rules (they live in declarativeNetRequest and would otherwise persist).
+      if (changes.qshingEnabled) {
+        if (this.settings.qshingEnabled) {
+          this.initializeBlockingRules();
+        } else {
+          this.clearAllBlocking();
         }
       }
     }
@@ -268,6 +289,21 @@ class QshingBackgroundService {
    */
   async checkUrl(url, options = {}) {
     const sourceType = options.sourceType || 'link';
+
+    // Real-time Protection is the master switch — no backend request when off.
+    await this.settingsReady;
+    if (!this.settings.qshingEnabled) {
+      return {
+        ...normalizeVerdict(
+          { data: { verdict: VERDICTS.SAFE } },
+          { inputUrl: url, finalUrl: url, sourceType }
+        ),
+        url,
+        strict: true,
+        timestamp: Date.now()
+      };
+    }
+
     // High-risk sources (QR / download / shortener) require a "strict" check:
     // the final redirect destination must be analyzed, and a non-strict cached
     // result (e.g. from an earlier plain-link scan) must NOT be reused.
@@ -520,6 +556,13 @@ class QshingBackgroundService {
    */
   async checkBatchUrls(urls, options = {}) {
     const sourceType = options.sourceType || 'link';
+
+    // Real-time Protection off -> no backend requests, nothing to apply.
+    await this.settingsReady;
+    if (!this.settings.qshingEnabled) {
+      return [];
+    }
+
     const unique = [...new Set((urls || []).filter(Boolean))];
 
     // High-risk sources must each take the strict single-URL path so redirects
@@ -652,6 +695,12 @@ class QshingBackgroundService {
    */
   async initializeBlockingRules() {
     try {
+      await this.settingsReady;
+      // Protection off (incl. at startup): make sure no dynamic rules linger.
+      if (!this.settings.qshingEnabled) {
+        await this.clearAllBlocking();
+        return;
+      }
       const blockedUrls = await this.getBlockedUrls();
       for (const url of blockedUrls) {
         await this.addBlockingRule(url);
@@ -804,7 +853,9 @@ class QshingBackgroundService {
    * Evaluate a newly created download item and intervene if dangerous.
    */
   async onDownloadCreated(item) {
-    if (!this.settings.checkDownloads) {
+    await this.settingsReady;
+    // Real-time Protection is the top-level switch; checkDownloads is secondary.
+    if (!this.settings.qshingEnabled || !this.settings.checkDownloads) {
       return;
     }
 
@@ -845,8 +896,10 @@ class QshingBackgroundService {
       return;
     }
 
-    if (risk.risk === 'high' || risk.risk === 'medium') {
-      // Not confirmed malicious, but high-risk type — warn the user.
+    // Only HIGH-risk types (executables) get a system notification. Medium-risk
+    // documents (PDF, office, archives) are not confirmed malicious and would be
+    // noisy — they were already flagged in-page by the download click modal.
+    if (risk.risk === 'high') {
       this.notifyDownloadWarning(downloadUrl, risk);
     }
   }
@@ -856,6 +909,7 @@ class QshingBackgroundService {
    */
   notifyDownloadBlocked(url, risk, verdict) {
     this.createNotification({
+      key: `blocked:${self.WegisCore.getHost(url)}:${risk.filename || url}`,
       title: '⛔ Wegis blocked a dangerous download',
       message: `${risk.filename || url}\nReason: ${
         verdict && isDangerousVerdict(verdict.verdict)
@@ -870,6 +924,7 @@ class QshingBackgroundService {
    */
   notifyDownloadWarning(url, risk) {
     this.createNotification({
+      key: `caution:${self.WegisCore.getHost(url)}:${risk.filename || url}`,
       title: '⚠️ Wegis download caution',
       message: `${risk.filename || url}\nThis file type (${
         risk.extension || 'unknown'
@@ -877,7 +932,35 @@ class QshingBackgroundService {
     });
   }
 
-  createNotification({ title, message }) {
+  /**
+   * Create a system notification, rate-limited to avoid spamming: at most one
+   * every NOTIFICATION_MIN_INTERVAL_MS, and the same host/filename `key` is
+   * suppressed for NOTIFICATION_DEDUPE_MS.
+   */
+  createNotification({ title, message, key }) {
+    const now = Date.now();
+
+    // Drop duplicates for the same host/file within the dedupe window.
+    if (key) {
+      const last = this.recentNotificationKeys.get(key);
+      if (last && now - last < this.NOTIFICATION_DEDUPE_MS) {
+        return;
+      }
+      this.recentNotificationKeys.set(key, now);
+      // Trim old entries so the map can't grow unbounded.
+      for (const [k, ts] of this.recentNotificationKeys) {
+        if (now - ts > this.NOTIFICATION_DEDUPE_MS) {
+          this.recentNotificationKeys.delete(k);
+        }
+      }
+    }
+
+    // Global rate limit.
+    if (now - this.lastNotificationAt < this.NOTIFICATION_MIN_INTERVAL_MS) {
+      return;
+    }
+    this.lastNotificationAt = now;
+
     if (!chrome.notifications || !chrome.notifications.create) {
       console.warn(`[notification] ${title}: ${message}`);
       return;
