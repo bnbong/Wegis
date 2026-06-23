@@ -86,6 +86,10 @@ class QshingDefender {
     try {
       this.linkCollector.scanQRCodes = this.settings.scanQRCodes;
 
+      // Check the page the user is actually on (navigation context). Unlike
+      // links, a navigation page CAN be hard-flagged — show a page banner.
+      this.checkNavigation();
+
       // Initial link collection
       const links = await this.linkCollector.collectAllLinks();
       console.log(`Found total of ${links.length} links.`);
@@ -367,25 +371,38 @@ class QshingDefender {
       this.checkedUrls.set(result.finalUrl, result);
     }
 
-    const block = WegisCore.shouldBlock(result.verdict, this.settings);
+    // Discovered links may only hard-block from an authoritative source
+    // (blacklist/reputation:*); a link's model/cache PHISHING must never become
+    // a hard block or click interstitial — it stays a soft visual indicator.
+    const gate = { source: result.source, sourceType: result.sourceType };
+    const block = WegisCore.shouldBlock(result.verdict, this.settings, gate);
     const warn = WegisCore.shouldWarn(result.verdict, result.sourceType);
+    // Eligible to hard-block ignoring the blockPhishing toggle — i.e. a genuine
+    // authoritative "block" verdict. Distinguishes "user turned blocking off"
+    // (still warrants a click warning) from "link model signal" (soft only).
+    const blockEligible = WegisCore.shouldBlock(
+      result.verdict,
+      { blockPhishing: true },
+      gate
+    );
 
     if (block) {
-      // Hard-block: clicks are cancelled and the href is neutralized.
+      // Hard-block (server "block" severity): clicks cancelled + href neutralized.
       this.blockedUrls.add(url);
       if (result.finalUrl) {
         this.blockedUrls.add(result.finalUrl);
       }
       this.phishingDetails.set(url, result);
       console.warn(
-        `Dangerous site (${result.verdict}): ${url}` +
+        `Blocked (${result.source || result.verdict}): ${url}` +
           (result.finalUrl && result.finalUrl !== url
             ? ` -> ${result.finalUrl}`
             : '')
       );
-    } else if (warn) {
-      // Warn-only (e.g. blockPhishing off, or uncertain high-risk source):
-      // keep the href but still guard the click with a pre-navigation warning.
+    } else if (blockEligible) {
+      // Authoritative "block" severity but blockPhishing is off — keep the href,
+      // but still guard the click with a pre-navigation warning. (Server "warn" /
+      // SUSPICIOUS and link model signals never get a click interstitial.)
       this.warnUrls.add(url);
       if (result.finalUrl) {
         this.warnUrls.add(result.finalUrl);
@@ -393,8 +410,9 @@ class QshingDefender {
       this.phishingDetails.set(url, result);
     }
 
-    // Crayon erase is the visual layer only — gated by showWarnings. QR codes
-    // get their own overlay via processQRObjects().
+    // Crayon erase is the visual-only layer, gated by showWarnings. Applies to
+    // both "block" (strong) and "warn" (soft caution) verdicts; QR codes get
+    // their own overlay via processQRObjects().
     if (this.settings.showWarnings && warn && result.sourceType !== 'qr') {
       this.markRiskyLink(url, result);
     }
@@ -657,6 +675,123 @@ class QshingDefender {
       text += `\nResolves to: ${result.finalUrl}`;
     }
     return text;
+  }
+
+  /**
+   * Check the page the user actually navigated to (navigation context). Unlike
+   * in-page links, a navigation page CAN be authoritatively flagged (block), so
+   * we surface a page-level banner instead of erasing anchors. This deliberately
+   * bypasses processVerdict (which neutralizes <a> hrefs).
+   */
+  async checkNavigation() {
+    if (!this.isEnabled) {
+      return;
+    }
+    const pageUrl = window.location.href;
+    if (!/^https?:/i.test(pageUrl)) {
+      return;
+    }
+
+    let result;
+    try {
+      result = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          { action: 'CHECK_URL', url: pageUrl, sourceType: 'navigation' },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              resolve(null);
+              return;
+            }
+            resolve(response);
+          }
+        );
+      });
+    } catch (_error) {
+      result = null;
+    }
+
+    // Re-check enablement: protection may have been toggled off mid-request.
+    if (!result || !this.isEnabled || !this.settings.showWarnings) {
+      return;
+    }
+
+    // Map verdict -> banner. block (PHISHING) is the strongest; warn
+    // (SUSPICIOUS) is a subtle indicator. pending/allow show nothing.
+    if (result.verdict === WegisCore.VERDICTS.PHISHING) {
+      this.showNavigationBanner(result, 'block');
+    } else if (result.verdict === WegisCore.VERDICTS.SUSPICIOUS) {
+      this.showNavigationBanner(result, 'warn');
+    }
+  }
+
+  /**
+   * Render a fixed top-of-page crayon banner for the current navigation:
+   * block = strong red (authoritative bad, offers Leave), warn = subtle orange.
+   * Inline-styled so it resists arbitrary page CSS; appended to <html> so it
+   * survives body re-renders.
+   */
+  showNavigationBanner(result, kind) {
+    if (document.getElementById('wegis-nav-banner')) {
+      return;
+    }
+
+    const FONT =
+      "'Comic Sans MS','Chalkboard SE','Chalkboard','Marker Felt','Segoe Print','Comic Neue',system-ui,sans-serif";
+    const isBlock = kind === 'block';
+    const bg = isBlock ? '#e8483f' : '#f0972a';
+
+    const banner = document.createElement('div');
+    banner.id = 'wegis-nav-banner';
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText =
+      `position:fixed;top:0;left:0;right:0;z-index:2147483647;` +
+      `background:${bg};color:#fff;font-family:${FONT};font-size:15px;` +
+      `font-weight:700;padding:11px 18px;display:flex;align-items:center;` +
+      `gap:14px;justify-content:center;flex-wrap:wrap;` +
+      `box-shadow:0 2px 10px rgba(0,0,0,0.25);text-align:center;`;
+    banner.title = this.describeVerdict(result);
+
+    const text = document.createElement('span');
+    text.textContent = isBlock
+      ? '✕ Wegis: this page may be a phishing site — leave if you did not expect it.'
+      : '⚠ Wegis: this page looks suspicious. Be careful with logins and downloads.';
+    banner.appendChild(text);
+
+    const mkBtn = (label, css) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.style.cssText =
+        `font-family:${FONT};font-weight:700;font-size:14px;cursor:pointer;` +
+        `border-radius:9px 6px 10px 5px / 5px 10px 6px 9px;padding:7px 16px;` +
+        css;
+      return btn;
+    };
+
+    if (isBlock) {
+      const leave = mkBtn(
+        'Leave',
+        'background:#fff;color:#e8483f;border:none;'
+      );
+      leave.addEventListener('click', () => {
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          window.location.assign('about:blank');
+        }
+      });
+      banner.appendChild(leave);
+    }
+
+    const dismiss = mkBtn(
+      'Dismiss',
+      'background:rgba(255,255,255,0.22);color:#fff;border:2px solid #fff;'
+    );
+    dismiss.addEventListener('click', () => {
+      banner.remove();
+    });
+    banner.appendChild(dismiss);
+
+    document.documentElement.appendChild(banner);
   }
 
   /**
@@ -1005,6 +1140,12 @@ class QshingDefender {
    */
   removeAllWarnings(options = {}) {
     const restoreLinks = options.restoreLinks !== false;
+
+    // Page-level navigation banner is always torn down (protection off or rescan).
+    const banner = document.getElementById('wegis-nav-banner');
+    if (banner) {
+      banner.remove();
+    }
 
     if (restoreLinks) {
       // Full restore: bring back the href + drop the blocking state on EVERY

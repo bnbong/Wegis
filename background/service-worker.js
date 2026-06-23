@@ -37,6 +37,11 @@ class QshingBackgroundService {
       scanQRCodes: true
     };
     this.whitelist = [];
+    // Optional per-client API token. The server enforces X-Wegis-Token only when
+    // WEGIS_API_TOKENS is configured (off by default today, on for public
+    // release). Kept in storage.local; empty means "send no header" so the path
+    // is ready the moment a token is issued. See wegis-client-integration.md.
+    this.apiToken = '';
     // Resolves once settings + whitelist have loaded (set in init()).
     this.settingsReady = Promise.resolve();
     // Notification rate limiting.
@@ -45,13 +50,13 @@ class QshingBackgroundService {
     // Fixed tuning constants (not user-configurable).
     this.CACHE_TTL_MS = 3600 * 1000; // verdict cache lifetime
     this.API_DELAY_MS = 500; // pause between per-URL batch waves
+    this.MAX_BATCH_URLS = 50; // server caps /analyze/batch at 50
     this.NOTIFICATION_MIN_INTERVAL_MS = 10000; // >=10s between notifications
     this.NOTIFICATION_DEDUPE_MS = 60000; // suppress same host/file for 60s
+    // 429 back-off: skip requests until this timestamp (set from Retry-After).
+    this.backoffUntil = 0;
     // Max redirect hops to follow when resolving shortened / redirected URLs.
     this.MAX_REDIRECT_HOPS = 5;
-    this.extensionVersion = chrome.runtime.getManifest
-      ? chrome.runtime.getManifest().version
-      : 'unknown';
 
     // Wegis Server API endpoints
     this.API_BASE = 'https://api.bnbong.com/api/v1/wegis-server';
@@ -78,7 +83,8 @@ class QshingBackgroundService {
     // first to avoid acting on stale "all on" defaults.
     this.settingsReady = Promise.all([
       this.loadSettings(),
-      this.loadWhitelist()
+      this.loadWhitelist(),
+      this.loadApiToken()
     ]);
     chrome.storage.onChanged.addListener((changes, area) => {
       this.onStorageChanged(changes, area);
@@ -137,6 +143,35 @@ class QshingBackgroundService {
   }
 
   /**
+   * Load the optional per-client API token (storage.local). Absent/empty until
+   * a token is issued; until then requests go out without the header.
+   */
+  async loadApiToken() {
+    try {
+      const { apiToken } = await chrome.storage.local.get(['apiToken']);
+      this.apiToken = typeof apiToken === 'string' ? apiToken.trim() : '';
+    } catch (error) {
+      console.error('Failed to load API token:', error);
+      this.apiToken = '';
+    }
+  }
+
+  /**
+   * Build the headers for an /analyze/* request, attaching X-Wegis-Token only
+   * when a token is configured. Centralized so check + batch stay in sync.
+   */
+  buildApiHeaders() {
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    };
+    if (this.apiToken) {
+      headers['X-Wegis-Token'] = this.apiToken;
+    }
+    return headers;
+  }
+
+  /**
    * React to settings / whitelist changes without needing a worker restart.
    */
   onStorageChanged(changes, area) {
@@ -160,6 +195,10 @@ class QshingBackgroundService {
       this.whitelist = Array.isArray(changes.whitelist.newValue)
         ? changes.whitelist.newValue
         : [];
+    }
+    if (area === 'local' && changes.apiToken) {
+      const next = changes.apiToken.newValue;
+      this.apiToken = typeof next === 'string' ? next.trim() : '';
     }
   }
 
@@ -369,8 +408,23 @@ class QshingBackgroundService {
 
     const context = { inputUrl: url, finalUrl, redirectChain, sourceType };
 
+    // Honor an active 429 back-off — return "pending" (unknown), don't hammer.
+    if (this.isRateLimited()) {
+      return {
+        ...normalizeVerdict(
+          { data: { status: 'pending', source: 'pending' } },
+          context
+        ),
+        url,
+        strict: false,
+        timestamp: Date.now()
+      };
+    }
+
     try {
-      const data = await this.requestAnalysis(finalUrl);
+      // navigation = the page the user is on; everything else is a discovered link.
+      const reqContext = sourceType === 'navigation' ? 'navigation' : 'link';
+      const data = await this.requestAnalysis(finalUrl, reqContext);
       const verdict = normalizeVerdict(data, context);
       return this.finalizeResult(verdict, { strict: needsResolution });
     } catch (error) {
@@ -395,22 +449,24 @@ class QshingBackgroundService {
   }
 
   /**
-   * POST a URL to the analysis endpoint and return the parsed JSON. The server
-   * contract is exactly `{ url }` (PhishingDetectionRequest), so we send only
-   * that — redirect resolution + source typing are tracked client-side.
+   * POST a single URL to /analyze/check and return the parsed JSON.
+   * @param {string} targetUrl
+   * @param {'navigation'|'link'} context navigation = page the user is on;
+   *   link = a URL discovered on the page (QR/download/shortener/anchor).
    */
-  async requestAnalysis(targetUrl) {
+  async requestAnalysis(targetUrl, context = 'link') {
     const response = await fetch(this.ENDPOINTS.analyzeCheck, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json'
-      },
-      body: JSON.stringify({ url: targetUrl }),
+      headers: this.buildApiHeaders(),
+      body: JSON.stringify({ url: targetUrl, context }),
       mode: 'cors',
       credentials: 'omit'
     });
 
+    if (response.status === 429) {
+      this.applyBackoff(response);
+      throw new Error('rate_limited');
+    }
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
@@ -419,6 +475,22 @@ class QshingBackgroundService {
     }
 
     return response.json();
+  }
+
+  /** True while the server has asked us to back off (429 Retry-After). */
+  isRateLimited() {
+    return Date.now() < this.backoffUntil;
+  }
+
+  /** Record a 429 back-off window from the response's Retry-After header. */
+  applyBackoff(response) {
+    const header = response.headers.get('Retry-After');
+    let seconds = Number(header);
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      seconds = 30; // sensible default when the header is missing/odd
+    }
+    this.backoffUntil = Date.now() + Math.min(seconds, 300) * 1000;
+    console.warn(`Rate limited; backing off for ${seconds}s`);
   }
 
   /**
@@ -441,7 +513,9 @@ class QshingBackgroundService {
 
     if (!opts.skipStats) {
       this.stats.checkedUrls++;
-      if (isDangerousVerdict(result.verdict)) {
+      // Count only true blocks (severity=block / PHISHING). A `warn`
+      // (SUSPICIOUS) is not a block under the new contract.
+      if (result.verdict === VERDICTS.PHISHING) {
         this.stats.blockedSites++;
       }
       this.stats.lastUpdate = Date.now();
@@ -449,9 +523,15 @@ class QshingBackgroundService {
       this.notifyStatsUpdated();
     }
 
-    // Hard-block dangerous verdicts (honoring the blockPhishing setting) on
-    // both the original and the resolved final URL.
-    if (!opts.skipBlock && shouldBlock(result.verdict, this.settings)) {
+    // Hard-block dangerous verdicts (honoring the blockPhishing setting) on both
+    // the original and the resolved final URL. For discovered links shouldBlock
+    // additionally requires an authoritative source (blacklist/reputation:*), so
+    // a link's model/cache signal can never produce a hard block.
+    const blockGate = { source: result.source, sourceType: result.sourceType };
+    if (
+      !opts.skipBlock &&
+      shouldBlock(result.verdict, this.settings, blockGate)
+    ) {
       await this.addBlockingRule(result.inputUrl);
       if (result.finalUrl && result.finalUrl !== result.inputUrl) {
         await this.addBlockingRule(result.finalUrl);
@@ -617,77 +697,85 @@ class QshingBackgroundService {
       return results;
     }
 
-    // Try the server batch endpoint for the plain links. Keep the legacy array
-    // payload so the extension stays compatible with the current server; the
-    // batch path only ever carries plain links (high-risk routed away above).
-    try {
-      const response = await fetch(this.ENDPOINTS.analyzeBatch, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'User-Agent': `Wegis-Extension/${this.extensionVersion}`
-        },
-        body: JSON.stringify(remaining),
-        mode: 'cors',
-        credentials: 'omit'
-      });
+    // Send the plain links to /analyze/batch in chunks of <=50 (the server caps
+    // at MAX_BATCH_URLS and returns the excess as "pending"). One call per chunk.
+    for (let i = 0; i < remaining.length; i += this.MAX_BATCH_URLS) {
+      const chunk = remaining.slice(i, i + this.MAX_BATCH_URLS);
 
-      if (response.ok) {
-        const data = await response.json();
-        const items = Array.isArray(data.data)
-          ? data.data
-          : Array.isArray(data)
-            ? data
-            : null;
-        if (items) {
-          for (const item of items) {
-            const inputUrl = item.url || item.inputUrl;
-            const verdict = normalizeVerdict(
-              { data: item, message: data.message },
-              { inputUrl, finalUrl: item.finalUrl || inputUrl, sourceType }
-            );
-            results.push(await this.finalizeResult(verdict, { strict: false }));
-          }
-          return results;
-        }
+      // Respect an active 429 back-off — mark the rest pending, don't hammer.
+      if (this.isRateLimited()) {
+        chunk.forEach((u) => results.push(this.pendingResult(u, sourceType)));
+        continue;
       }
-      console.warn(
-        'Batch endpoint did not return expected data; falling back to per-URL checks.'
-      );
-    } catch (error) {
-      console.warn(
-        'Batch endpoint failed, falling back to per-URL checks:',
-        error
-      );
-    }
 
-    // Fallback: per-URL checks in small waves to respect rate limits.
-    const batchSize = 5;
-    for (let i = 0; i < remaining.length; i += batchSize) {
-      const batch = remaining.slice(i, i + batchSize);
-      const settled = await Promise.allSettled(
-        batch.map((url) => this.checkUrl(url, { sourceType }))
-      );
-      settled.forEach((res, index) => {
-        if (res.status === 'fulfilled') {
-          results.push(res.value);
-        } else {
-          results.push({
-            ...makeErrorVerdict(
-              { inputUrl: batch[index], sourceType },
-              res.reason?.message || 'Batch fallback error'
-            ),
-            url: batch[index],
-            timestamp: Date.now()
-          });
+      let handled = false;
+      try {
+        const response = await fetch(this.ENDPOINTS.analyzeBatch, {
+          method: 'POST',
+          headers: this.buildApiHeaders(),
+          body: JSON.stringify(chunk),
+          mode: 'cors',
+          credentials: 'omit'
+        });
+
+        if (response.status === 429) {
+          this.applyBackoff(response);
+          chunk.forEach((u) => results.push(this.pendingResult(u, sourceType)));
+          continue;
         }
-      });
-      if (i + batchSize < remaining.length) {
+
+        if (response.ok) {
+          const data = await response.json();
+          const items = Array.isArray(data.data)
+            ? data.data
+            : Array.isArray(data)
+              ? data
+              : null;
+          if (items) {
+            for (const item of items) {
+              const inputUrl = item.url || item.inputUrl;
+              const verdict = normalizeVerdict(
+                { data: item, message: data.message },
+                { inputUrl, finalUrl: item.finalUrl || inputUrl, sourceType }
+              );
+              results.push(
+                await this.finalizeResult(verdict, { strict: false })
+              );
+            }
+            handled = true;
+          }
+        }
+      } catch (error) {
+        console.warn('Batch endpoint failed:', error);
+      }
+
+      if (!handled) {
+        // Batch failed (401/500/malformed). Do NOT fan out to per-URL /check —
+        // that would turn one failed 50-URL batch into 50 /check requests and
+        // defeat "avoid bursty full-page scans". Mark the chunk pending instead;
+        // these links stay unverified and can be re-queried via /check when the
+        // user actually navigates to one.
+        chunk.forEach((u) => results.push(this.pendingResult(u, sourceType)));
+      }
+
+      if (i + this.MAX_BATCH_URLS < remaining.length) {
         await this.delay(this.API_DELAY_MS);
       }
     }
     return results;
+  }
+
+  /** A "pending" (not-yet-analyzed) result — treated as unknown, not safe. */
+  pendingResult(url, sourceType) {
+    return {
+      ...normalizeVerdict(
+        { data: { status: 'pending', source: 'pending' } },
+        { inputUrl: url, finalUrl: url, sourceType }
+      ),
+      url,
+      strict: false,
+      timestamp: Date.now()
+    };
   }
 
   /**

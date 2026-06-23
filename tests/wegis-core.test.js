@@ -150,18 +150,128 @@ test('normalizeVerdict defaults unknown shapes to UNKNOWN, never SAFE', () => {
   assert.equal(garbage.verdict, VERDICTS.UNKNOWN);
 });
 
-test('shouldBlock respects blockPhishing and only blocks dangerous verdicts', () => {
+test('shouldBlock hard-blocks only PHISHING (block severity), never SUSPICIOUS', () => {
   assert.equal(
     Core.shouldBlock(VERDICTS.PHISHING, { blockPhishing: true }),
     true
   );
-  assert.equal(Core.shouldBlock(VERDICTS.SUSPICIOUS, {}), true);
+  // SUSPICIOUS == server "warn" — must NEVER be a hard interstitial.
+  assert.equal(Core.shouldBlock(VERDICTS.SUSPICIOUS, {}), false);
   assert.equal(
     Core.shouldBlock(VERDICTS.PHISHING, { blockPhishing: false }),
     false
   );
   assert.equal(Core.shouldBlock(VERDICTS.UNKNOWN, {}), false);
   assert.equal(Core.shouldBlock(VERDICTS.SAFE, {}), false);
+});
+
+test('shouldBlock gates discovered links on an authoritative source', () => {
+  const on = { blockPhishing: true };
+
+  // A discovered link (sourceType=link) hard-blocks ONLY from blacklist/reputation.
+  assert.equal(
+    Core.shouldBlock(VERDICTS.PHISHING, on, {
+      sourceType: 'link',
+      source: 'blacklist'
+    }),
+    true
+  );
+  assert.equal(
+    Core.shouldBlock(VERDICTS.PHISHING, on, {
+      sourceType: 'link',
+      source: 'reputation:google'
+    }),
+    true
+  );
+  // A link's model/cache PHISHING must NEVER hard-block (contract rule #4).
+  assert.equal(
+    Core.shouldBlock(VERDICTS.PHISHING, on, {
+      sourceType: 'link',
+      source: 'model'
+    }),
+    false
+  );
+  assert.equal(
+    Core.shouldBlock(VERDICTS.PHISHING, on, {
+      sourceType: 'link',
+      source: 'cache'
+    }),
+    false
+  );
+
+  // The active page (navigation) CAN be hard-flagged by the model.
+  assert.equal(
+    Core.shouldBlock(VERDICTS.PHISHING, on, {
+      sourceType: 'navigation',
+      source: 'model'
+    }),
+    true
+  );
+
+  // No opts (e.g. legacy callers / unit checks): source gate is skipped.
+  assert.equal(Core.shouldBlock(VERDICTS.PHISHING, on), true);
+});
+
+test('isAuthoritativeBlockSource recognizes blacklist and reputation feeds', () => {
+  assert.equal(Core.isAuthoritativeBlockSource('blacklist'), true);
+  assert.equal(Core.isAuthoritativeBlockSource('reputation:phishtank'), true);
+  assert.equal(Core.isAuthoritativeBlockSource('model'), false);
+  assert.equal(Core.isAuthoritativeBlockSource('cache'), false);
+  assert.equal(Core.isAuthoritativeBlockSource(''), false);
+  assert.equal(Core.isAuthoritativeBlockSource(null), false);
+});
+
+test('normalizeVerdict maps the severity/status/source contract', () => {
+  const block = Core.normalizeVerdict(
+    {
+      data: {
+        result: true,
+        severity: 'block',
+        status: 'final',
+        source: 'blacklist',
+        confidence: 1
+      }
+    },
+    {}
+  );
+  assert.equal(block.verdict, VERDICTS.PHISHING);
+  assert.equal(block.severity, 'block');
+  assert.equal(block.source, 'blacklist');
+
+  // warn -> SUSPICIOUS (result is false because result == block)
+  const warn = Core.normalizeVerdict(
+    { data: { result: false, severity: 'warn', source: 'model' } },
+    {}
+  );
+  assert.equal(warn.verdict, VERDICTS.SUSPICIOUS);
+
+  const allow = Core.normalizeVerdict(
+    { data: { result: false, severity: 'allow', source: 'whitelist' } },
+    {}
+  );
+  assert.equal(allow.verdict, VERDICTS.SAFE);
+
+  // pending must be UNKNOWN, never SAFE — even though result is false.
+  const pending = Core.normalizeVerdict(
+    { data: { result: false, severity: 'allow', status: 'pending' } },
+    {}
+  );
+  assert.equal(pending.verdict, VERDICTS.UNKNOWN);
+  assert.equal(pending.status, 'pending');
+
+  // non_html / blocked_private are allow/benign.
+  const nonHtml = Core.normalizeVerdict(
+    { data: { result: false, severity: 'allow', source: 'non_html' } },
+    {}
+  );
+  assert.equal(nonHtml.verdict, VERDICTS.SAFE);
+
+  // source=error -> ERROR.
+  const err = Core.normalizeVerdict(
+    { data: { result: false, source: 'error' } },
+    {}
+  );
+  assert.equal(err.verdict, VERDICTS.ERROR);
 });
 
 test('shouldWarn surfaces uncertain verdicts only for high-risk sources', () => {
